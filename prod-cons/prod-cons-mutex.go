@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"sync"
 	"errors"
 	"time"
@@ -55,15 +54,15 @@ func cons() {
 	for {
 		wg.Add(1)
 
-		out, err := dequeue()
+		_, err := dequeue()
 		if (err == nil) {
 			failedAttempts = 0
-			fmt.Println("consumed: ", out)
+			// fmt.Println("consumed: ", out)
 			wg.Add(1)
 			go cons()
 		} else {
 			if (failedAttempts == 2) {
-				fmt.Println("goodbye")
+				// fmt.Println("goodbye")
 				break
 			} else {
 				failedAttempts++
