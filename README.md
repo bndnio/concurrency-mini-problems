@@ -14,7 +14,7 @@ Producers and consumers are analogous to many systems in computing today.
 On a network level it is the server and client, exchanging information. 
 On a local level it could be a peripheral communicating with the host. 
 And on a distributed level it could be multiple sensors producing data which 
-is being consumed and managed by a database system. 
+is being consumed and managed by a database system (or multiple!). 
 
 ### Code and Runtime Characteristics
 
@@ -234,6 +234,8 @@ Though it would mitigate it since some order could be enforced, and scheduling
 what routine hits the queueing mechanism first is the runtime mechanism's 
 responsibility.
 
+Winner: Both
+
 
 #### Comprehensibility
 
@@ -311,6 +313,12 @@ to a data store and read from it.
 
 ### Analysis
 
+#### Correctness
+
+#### Comprehesibility
+
+#### Performance
+
 ## (3) Insert-Search-Delete
 
 ### Relevance
@@ -339,6 +347,12 @@ from local to distributed.
 
 ### Analysis
 
+#### Correctness
+
+#### Comprehesibility
+
+#### Performance
+
 ## (4) Building H20
 
 ### Relevance
@@ -356,7 +370,240 @@ the next stage of the pipeline.
 
 ### Code and Runtime Characteristics
 
+Let's compare the code the output commented out 
+as we've previously shown it slows down the program significantly. 
+Comparing the un-buffered channel vs the buffered channel implementation, 
+we want to see if adding a buffer to the channels allows for faster processing. 
+Since each O must wait for two Hs to tell it that they've bonded, and then the Hs 
+must wait for the O to tell them they've bonded, the idea behind the buffered 
+channel is that fewer context switches may occur. 
+This is because the Os can tell Hs it's ready and wait for them to bond, 
+and the Hs don't need to wait for the O to acknowledge they've bonded since 
+there may only be two Hs in the critical section at once.
+
+The un-buffered channel implementation's stats:
+
+```
+Duration: 2.16s, Total samples = 6.36s (295.06%)
+Entering interactive mode (type "help" for commands, "o" for options)
+(pprof) top 10
+Showing nodes accounting for 5.94s, 93.40% of 6.36s total
+Dropped 46 nodes (cum <= 0.03s)
+Showing top 10 nodes out of 41
+      flat  flat%   sum%        cum   cum%
+     4.81s 75.63% 75.63%      4.81s 75.63%  runtime.usleep
+     0.41s  6.45% 82.08%      0.41s  6.45%  runtime.pthread_cond_signal
+     0.20s  3.14% 85.22%      0.20s  3.14%  runtime.procyield
+     0.16s  2.52% 87.74%      0.16s  2.52%  runtime.pthread_mutex_lock
+     0.08s  1.26% 88.99%      0.89s 13.99%  runtime.chanrecv
+     0.07s  1.10% 90.09%      0.08s  1.26%  runtime.gfget
+     0.07s  1.10% 91.19%      5.10s 80.19%  runtime.lock
+     0.06s  0.94% 92.14%      0.07s  1.10%  runtime.stackpoolalloc
+     0.04s  0.63% 92.77%      0.04s  0.63%  runtime.casgstatus
+     0.04s  0.63% 93.40%      0.11s  1.73%  runtime.malg.func1
+```
+
+```
+Showing nodes accounting for 8.50MB, 100% of 8.50MB total
+      flat  flat%   sum%        cum   cum%
+    8.50MB   100%   100%     8.50MB   100%  runtime.malg
+         0     0%   100%     8.50MB   100%  runtime.mstart
+         0     0%   100%     8.50MB   100%  runtime.newproc.func1
+         0     0%   100%     8.50MB   100%  runtime.newproc1
+         0     0%   100%     8.50MB   100%  runtime.systemstack
+```
+
+And the buffered channel implementation's stats:
+
+```
+Duration: 2.05s, Total samples = 5.47s (266.97%)
+Entering interactive mode (type "help" for commands, "o" for options)
+(pprof) top 10
+Showing nodes accounting for 4.83s, 88.30% of 5.47s total
+Dropped 39 nodes (cum <= 0.03s)
+Showing top 10 nodes out of 50
+      flat  flat%   sum%        cum   cum%
+     3.64s 66.54% 66.54%      3.64s 66.54%  runtime.usleep
+     0.33s  6.03% 72.58%      0.33s  6.03%  runtime.pthread_cond_signal
+     0.27s  4.94% 77.51%      0.27s  4.94%  runtime.procyield
+     0.13s  2.38% 79.89%      4.03s 73.67%  runtime.lock
+     0.11s  2.01% 81.90%      0.13s  2.38%  runtime.gfget
+     0.10s  1.83% 83.73%      0.10s  1.83%  runtime.casgstatus
+     0.08s  1.46% 85.19%      0.08s  1.46%  runtime.stackpoolalloc
+     0.07s  1.28% 86.47%      0.96s 17.55%  runtime.newproc1
+     0.05s  0.91% 87.39%      0.07s  1.28%  runtime.gopark
+     0.05s  0.91% 88.30%      0.05s  0.91%  runtime.pthread_mutex_lock
+```
+
+```
+Showing nodes accounting for 8MB, 100% of 8MB total
+      flat  flat%   sum%        cum   cum%
+       8MB   100%   100%        8MB   100%  runtime.malg
+         0     0%   100%        8MB   100%  runtime.mstart
+         0     0%   100%        8MB   100%  runtime.newproc.func1
+         0     0%   100%        8MB   100%  runtime.newproc1
+         0     0%   100%        8MB   100%  runtime.systemstack
+```
+
+Seeing that this is suspiciously efficient. 
+Let's try changing the code so it's as inneficient as possible and compare. 
+To do this, we change: 
+
+```
+diff --git a/H2O/H2O-buffered.go b/H2O/H2O-buffered.go
+index 9a4867e..30b2970 100644
+--- a/H2O/H2O-buffered.go
++++ b/H2O/H2O-buffered.go
+@@ -44,9 +44,12 @@ func main() {
+ 	}
+ 
+ 	for i:=0; i<1000000; i++ {
+-		wg.Add(3)
+-		go H()
++		wg.Add(1)
+ 		go O()
++	}
++	for i:=0; i<1000000; i++ {
++		wg.Add(2)
++		go H()
+ 		go H()
+ 	}
+ 	wg.Wait()
+```
+
+So that we create all the O routines, before creating any Hs. 
+
+Now comparing the un-buffered vs. the buffered performance:
+
+```
+Duration: 9.27s, Total samples = 19.88s (214.38%)
+Entering interactive mode (type "help" for commands, "o" for options)
+(pprof) top 10
+Showing nodes accounting for 14100ms, 70.93% of 19880ms total
+Dropped 84 nodes (cum <= 99.40ms)
+Showing top 10 nodes out of 99
+      flat  flat%   sum%        cum   cum%
+    4030ms 20.27% 20.27%     4030ms 20.27%  runtime.usleep
+    2720ms 13.68% 33.95%     2790ms 14.03%  runtime.stackpoolalloc
+    1540ms  7.75% 41.70%     4030ms 20.27%  runtime.gentraceback
+    1510ms  7.60% 49.30%     1640ms  8.25%  runtime.gcWriteBarrier
+    1260ms  6.34% 55.63%     5260ms 26.46%  runtime.chanrecv
+     800ms  4.02% 59.66%      860ms  4.33%  runtime.getempty
+     620ms  3.12% 62.78%      950ms  4.78%  runtime.acquireSudog
+     580ms  2.92% 65.69%     4780ms 24.04%  runtime.newproc1
+     570ms  2.87% 68.56%      580ms  2.92%  runtime.gopark
+     470ms  2.36% 70.93%     3260ms 16.40%  runtime.malg.func1
+```
+
+```
+Showing nodes accounting for 765.22MB, 100% of 765.22MB total
+      flat  flat%   sum%        cum   cum%
+  748.27MB 97.79% 97.79%   748.27MB 97.79%  runtime.malg
+   16.95MB  2.21%   100%    16.95MB  2.21%  runtime.allgadd
+         0     0%   100%   765.22MB   100%  runtime.mstart
+         0     0%   100%   765.22MB   100%  runtime.newproc.func1
+         0     0%   100%   765.22MB   100%  runtime.newproc1
+         0     0%   100%   765.22MB   100%  runtime.systemstack
+```
+
+vs. buffered:
+
+```
+Duration: 7.99s, Total samples = 19.23s (240.77%)
+Entering interactive mode (type "help" for commands, "o" for options)
+(pprof) top 10
+Showing nodes accounting for 13470ms, 70.05% of 19230ms total
+Dropped 88 nodes (cum <= 96.15ms)
+Showing top 10 nodes out of 102
+      flat  flat%   sum%        cum   cum%
+    5350ms 27.82% 27.82%     5360ms 27.87%  runtime.usleep
+    2520ms 13.10% 40.93%     2540ms 13.21%  runtime.stackpoolalloc
+     930ms  4.84% 45.76%      980ms  5.10%  runtime.getempty
+     860ms  4.47% 50.23%      860ms  4.47%  runtime.pthread_cond_wait
+     790ms  4.11% 54.34%      790ms  4.11%  runtime.pthread_cond_signal
+     740ms  3.85% 58.19%     1430ms  7.44%  runtime.pcvalue
+     680ms  3.54% 61.73%     1020ms  5.30%  runtime.gcWriteBarrier
+     540ms  2.81% 64.53%     3630ms 18.88%  runtime.gentraceback
+     540ms  2.81% 67.34%      880ms  4.58%  runtime.scanobject
+     520ms  2.70% 70.05%      610ms  3.17%  runtime.step
+```
+
+```
+Showing nodes accounting for 728.71MB, 99.93% of 729.21MB total
+Dropped 1 node (cum <= 3.65MB)
+      flat  flat%   sum%        cum   cum%
+  711.76MB 97.61% 97.61%   711.76MB 97.61%  runtime.malg
+   16.95MB  2.32% 99.93%    16.95MB  2.32%  runtime.allgadd
+         0     0% 99.93%   728.71MB 99.93%  runtime.mstart
+         0     0% 99.93%   728.71MB 99.93%  runtime.newproc.func1
+         0     0% 99.93%   728.71MB 99.93%  runtime.newproc1
+         0     0% 99.93%   728.71MB 99.93%  runtime.systemstack
+```
+
+Whoa, that's a difference!
+
+2s and 8MB of memory usage, vs > 8s and over 700MB of memory usage. 
+
 ### Analysis
+
+#### Correctness
+
+The criteria for the H2O problem are:
+1. H atoms must wait for an O atom in order to move forward
+2. O atoms must wait for two H atoms in order to move forward
+
+These are accomplished by synchronizing channels.
+
+In the un-buffered implementation, the O routine holds until it's recieved two 
+hReady signals from two separate H routines. 
+At this point there are exactly two H routines waiting for the okay from exactly 
+one O routine. 
+And the O routine has now passed the barrier waiting for H routines. 
+The O routine then release one O ready signal for one H routine to complete, and then one more for the other H routine to complete.
+
+The difference with the buffered implementation is that it allows the Hs to enter 
+the critical section without an O, but it does not let them through until they 
+have been bound to by an O. 
+Likewise, the Os may leave the crical section prior to Hs acknowledging it; 
+but with the guarantee that there are exactly two Hs for each O, 
+this is not a problem.
+
+One caveat is that atoms passing are not necessarily the one allowed one another into the critical section. 
+However, since we are still satisfying the criteria, this is not an issue. 
+
+Winner: Both
+
+#### Comprehesibility
+
+Both solutions are short and simple. 
+The un-buffered solution is slightly easier to mentally trace though, since the 
+reader doesn't need to remember the size or what is in the buffered channel. 
+They read through, see when a routine must wait, and when it sends a message. 
+Otherwise one must conceptualize given the possible states of the buffered channel 
+what coule happen.
+
+Winner: Un-buffered
+
+#### Performance
+
+We see that the runtimes for 1000000 H2O moledules with an ideal execution path 
+is only 2.16s and 2.05s, for the un-buffered and buffered channel 
+implementations, respectively. 
+And the memory usage is only 8.5MB and 8MB, respectively.
+That means the difference in speed is less than 5%, and memory usage is only a 
+0.5MB difference. 
+From our experience comparing the producer/consumer problem, it's possible these 
+differences are due to the runtime environment. 
+
+However, when we look at the runtimes for 1000000 H2O molecules in a least 
+optimal execution path, our runtimes jumps to 9.27s and 7.99s, respectively. 
+And memory usage of 765.22MB and 729.21MB, respecitvely. 
+What first seemed like a minor difference due to runtime variance, is 
+exacerbated here given the un-ideal scenario. 
+It's likely the extra routine switching in the un-buffered solution, 
+causes the extra time and memory space. 
+
+Winner: Buffered
 
 ## (5) Sushi Bar
 
@@ -379,6 +626,12 @@ or other peripherals/external systems.
 ### Code and Runtime Characteristics
 
 ### Analysis
+
+#### Correctness
+
+#### Comprehesibility
+
+#### Performance
 
 ## (6) Tangle Verification
 
@@ -405,5 +658,11 @@ node (piece of work) to the queue for other actors to verify.
 ### Code and Runtime Characteristics
 
 ### Analysis
+
+#### Correctness
+
+#### Comprehesibility
+
+#### Performance
 
 # Conclusion
