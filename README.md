@@ -80,30 +80,68 @@ is being consumed and managed by a database system (or multiple!).
 
 ### Code and Runtime Characteristics
 
-Running pprof for the first time, we see:
+The producer-consumer mechanism implemented consists of two separate routines
+
+Running pprof for the first time, and on prod-cons-channels, we see:
 
 ```
-Duration: 9.25s, Total samples = 4.27s (46.16%)
+Duration: 10.30s, Total samples = 4.62s (44.84%)
 Entering interactive mode (type "help" for commands, "o" for options)
-(pprof) top10
-Showing nodes accounting for 3140ms, 73.54% of 4270ms total
-Dropped 81 nodes (cum <= 21.35ms)
+(pprof) top
+Showing nodes accounting for 3510ms, 75.97% of 4620ms total
+Dropped 79 nodes (cum <= 23.10ms)
 Showing top 10 nodes out of 108
       flat  flat%   sum%        cum   cum%
-     950ms 22.25% 22.25%      970ms 22.72%  syscall.Syscall
-     480ms 11.24% 33.49%      480ms 11.24%  runtime.pthread_cond_signal
-     480ms 11.24% 44.73%      480ms 11.24%  runtime.usleep
-     460ms 10.77% 55.50%      460ms 10.77%  runtime.pthread_cond_wait
-     260ms  6.09% 61.59%      290ms  6.79%  runtime.stackpoolalloc
-     120ms  2.81% 64.40%      120ms  2.81%  fmt.newPrinter
-     120ms  2.81% 67.21%      320ms  7.49%  main.dequeue
-     120ms  2.81% 70.02%      480ms 11.24%  runtime.gentraceback
-      80ms  1.87% 71.90%       90ms  2.11%  runtime.step
-      70ms  1.64% 73.54%      190ms  4.45%  runtime.pcvalue
+    1010ms 21.86% 21.86%     1010ms 21.86%  syscall.Syscall
+     660ms 14.29% 36.15%      660ms 14.29%  runtime.pthread_cond_signal
+     580ms 12.55% 48.70%      580ms 12.55%  runtime.pthread_cond_wait
+     440ms  9.52% 58.23%      440ms  9.52%  runtime.usleep
+     270ms  5.84% 64.07%      280ms  6.06%  runtime.stackpoolalloc
+     150ms  3.25% 67.32%      510ms 11.04%  runtime.gentraceback
+     120ms  2.60% 69.91%      120ms  2.60%  runtime.pthread_cond_timedwait_relative_np
+     100ms  2.16% 72.08%      100ms  2.16%  runtime.nanotime
+      90ms  1.95% 74.03%      110ms  2.38%  fmt.newPrinter
+      90ms  1.95% 75.97%      200ms  4.33%  runtime.pcvalue
 ```
 
 Noticing that `fmt.NewPrinter` is consuming a non-zero amount of time, 
-let's remove it from the code base and rebuild and re-profile.
+let check that out a bit more.
+
+```
+(pprof) list main
+Total: 4.62s
+ROUTINE ======================== main.cons in /Users/brnd/repo/csc464/a1/prod-cons/prod-cons-channels.go
+         0      1.84s (flat, cum) 39.83% of Total
+         .          .     48:func cons() {
+         .          .     49:   failedAttempts := 0
+         .          .     50:   for {
+         .          .     51:           wg.Add(1)
+         .          .     52:
+         .      310ms     53:           out, err := dequeue()
+         .          .     54:           if (err == nil) {
+         .          .     55:                   failedAttempts = 0
+         .      910ms     56:                   fmt.Println("consumed: ", out)
+         .          .     57:                   wg.Add(1)
+         .       10ms     58:                   go cons()
+         .          .     59:           } else {
+         .          .     60:                   if (failedAttempts == 2) {
+         .      540ms     61:                           fmt.Println("goodbye")
+         .          .     62:                           break
+         .          .     63:                   } else {
+         .          .     64:                           failedAttempts++
+         .       70ms     65:                           time.Sleep(time.Duration(100*failedAttempts)*time.Millisecond)
+         .          .     66:                   }
+         .          .     67:           }
+         .          .     68:   }
+         .          .     69:   wg.Done()
+         .          .     70:}
+...
+```
+
+Looks like our print statements takes 1.45s of the 1.84s 
+it takes for the `cons` (consume) routine to run. 
+This must be some sort of bottleneck! 
+Let's remove it from the code base and rebuild and re-profile.
 
 ```
 diff --git a/prod-cons-channels.go b/prod-cons-channels.go
@@ -160,9 +198,9 @@ Showing top 10 nodes out of 111
       50ms  2.53% 71.72%       80ms  4.04%  runtime.pcvalue
 ```
 
-Which looks vastly different! And takes way less time! 
+Which looks very different, and takes way less time! 
 Loosing the output to console I/O saved us nearly an order of magnitude on our runtime. 
-It now looks like sleeping is costing us the biggest performance hit. 
+It now looks like the most time is spend sleeping.
 However, given that it's unknown if and when the next element will be produced, 
 and the sleeping mechanism in the consumers allow us to prevent starving 
 the producers, there isn't much left to do improve in this implementation.  
@@ -170,39 +208,44 @@ the producers, there isn't much left to do improve in this implementation.
 Before moving on, lets check the memory performance: 
 
 ```
-Showing nodes accounting for 57.44MB, 100% of 57.44MB total
+(pprof) top
+Showing nodes accounting for 94.15MB, 97.26% of 96.81MB total
+Showing top 10 nodes out of 34
       flat  flat%   sum%        cum   cum%
-   54.02MB 94.05% 94.05%    54.02MB 94.05%  runtime.malg
-    1.89MB  3.29% 97.34%     1.89MB  3.29%  time.Sleep
-    1.53MB  2.66%   100%     1.53MB  2.66%  runtime.allgadd
-         0     0%   100%     1.89MB  3.29%  main.cons
-         0     0%   100%    55.55MB 96.71%  runtime.mstart
-         0     0%   100%    55.55MB 96.71%  runtime.newproc.func1
-         0     0%   100%    55.55MB 96.71%  runtime.newproc1
-         0     0%   100%    55.55MB 96.71%  runtime.systemstack
+   36.01MB 37.20% 37.20%    36.01MB 37.20%  runtime.malg
+      20MB 20.66% 57.86%       20MB 20.66%  fmt.glob..func1
+   10.28MB 10.61% 68.48%    10.28MB 10.61%  sync.(*Pool).Put
+    6.50MB  6.71% 75.19%     6.50MB  6.71%  main.enqueue
+    5.51MB  5.69% 80.88%     5.51MB  5.69%  time.Sleep
+    5.35MB  5.52% 86.41%     5.35MB  5.52%  runtime.allgadd
+    3.50MB  3.62% 90.03%    44.86MB 46.34%  runtime.systemstack
+       3MB  3.10% 93.12%        3MB  3.10%  fmt.(*buffer).WriteByte
+       2MB  2.07% 95.19%        2MB  2.07%  internal/poll.runtime_Semacquire
+       2MB  2.07% 97.26%        2MB  2.07%  errors.New
 ```
 
-Noting that it looks like we're using a total of 57.44MB.
+Noting that it looks like we're using a total of 96.81MB.
 
-Now, we can compare this implementation with channels to one using mutexes!
+Now, we can compare this implementation with channels to one using mutexes.
 
 ```
-Duration: 1.09s, Total samples = 1.93s (177.85%)
+Duration: 1.14s, Total samples = 2.20s (192.32%)
 Entering interactive mode (type "help" for commands, "o" for options)
-(pprof) top 10
-Showing nodes accounting for 1320ms, 68.39% of 1930ms total
-Showing top 10 nodes out of 135
+(pprof) top
+Showing nodes accounting for 1460ms, 66.36% of 2200ms total
+Dropped 38 nodes (cum <= 11ms)
+Showing top 10 nodes out of 110
       flat  flat%   sum%        cum   cum%
-     360ms 18.65% 18.65%      360ms 18.65%  runtime.usleep
-     330ms 17.10% 35.75%      330ms 17.10%  runtime.pthread_cond_signal
-     140ms  7.25% 43.01%      140ms  7.25%  runtime.pthread_cond_wait
-     110ms  5.70% 48.70%      130ms  6.74%  time.Sleep
-     100ms  5.18% 53.89%      140ms  7.25%  runtime.stackpoolalloc
-      70ms  3.63% 57.51%       70ms  3.63%  runtime.(*semaRoot).queue
-      60ms  3.11% 60.62%       80ms  4.15%  errors.New
-      60ms  3.11% 63.73%      300ms 15.54%  runtime.gentraceback
-      50ms  2.59% 66.32%      110ms  5.70%  runtime.pcvalue
-      40ms  2.07% 68.39%       40ms  2.07%  runtime.nanotime
+     310ms 14.09% 14.09%      310ms 14.09%  runtime.usleep
+     290ms 13.18% 27.27%      290ms 13.18%  runtime.pthread_cond_signal
+     260ms 11.82% 39.09%      260ms 11.82%  runtime.pthread_cond_wait
+     120ms  5.45% 44.55%      120ms  5.45%  runtime.memclrNoHeapPointers
+     120ms  5.45% 50.00%      160ms  7.27%  runtime.stackpoolalloc
+     100ms  4.55% 54.55%      100ms  4.55%  runtime.getempty
+      90ms  4.09% 58.64%       90ms  4.09%  runtime.nanotime
+      60ms  2.73% 61.36%      310ms 14.09%  runtime.gentraceback
+      60ms  2.73% 64.09%       60ms  2.73%  runtime.pthread_cond_timedwait_relative_np
+      50ms  2.27% 66.36%      120ms  5.45%  runtime.pcvalue
 ```
 
 Looking at duration, it appears this is slightly slower! 
@@ -211,23 +254,22 @@ running it again.
 This time, we get: 
 
 ```
-Duration: 1.06s, Total samples = 2.04s (192.14%)
+Duration: 900.47ms, Total samples = 1.78s (197.67%)
 Entering interactive mode (type "help" for commands, "o" for options)
-(pprof) top 10
-Showing nodes accounting for 1450ms, 71.08% of 2040ms total
-Dropped 34 nodes (cum <= 10.20ms)
-Showing top 10 nodes out of 95
+(pprof) top
+Showing nodes accounting for 1180ms, 66.29% of 1780ms total
+Showing top 10 nodes out of 132
       flat  flat%   sum%        cum   cum%
-     430ms 21.08% 21.08%      430ms 21.08%  runtime.usleep
-     290ms 14.22% 35.29%      290ms 14.22%  runtime.pthread_cond_signal
-     160ms  7.84% 43.14%      160ms  7.84%  runtime.pthread_cond_wait
-     110ms  5.39% 48.53%      110ms  5.39%  runtime.memclrNoHeapPointers
-     110ms  5.39% 53.92%      130ms  6.37%  runtime.stackpoolalloc
-      80ms  3.92% 57.84%      120ms  5.88%  errors.New
-      80ms  3.92% 61.76%      110ms  5.39%  runtime.acquireSudog
-      70ms  3.43% 65.20%      290ms 14.22%  runtime.gentraceback
-      60ms  2.94% 68.14%      460ms 22.55%  runtime.newproc1
-      60ms  2.94% 71.08%       60ms  2.94%  runtime.pthread_cond_timedwait_relative_np
+     300ms 16.85% 16.85%      300ms 16.85%  runtime.usleep
+     190ms 10.67% 27.53%      200ms 11.24%  errors.New
+     180ms 10.11% 37.64%      180ms 10.11%  runtime.pthread_cond_signal
+     140ms  7.87% 45.51%      170ms  9.55%  runtime.stackpoolalloc
+     120ms  6.74% 52.25%      140ms  7.87%  time.Sleep
+      70ms  3.93% 56.18%       70ms  3.93%  runtime.pthread_cond_wait
+      60ms  3.37% 59.55%       90ms  5.06%  runtime.acquireSudog
+      40ms  2.25% 61.80%       40ms  2.25%  runtime.(*semaRoot).queue
+      40ms  2.25% 64.04%      170ms  9.55%  runtime.gentraceback
+      40ms  2.25% 66.29%       40ms  2.25%  runtime.getempty
 ```
 
 Looks like it is now slightly faster than the channel implementation. 
@@ -236,38 +278,44 @@ Most of the performance difference must be due to how the routines are scheduled
 Checking the memory performance before moving on: 
 
 ```
-Showing nodes accounting for 25.01MB, 100% of 25.01MB total
+(pprof) top
+Showing nodes accounting for 71.22MB, 100% of 71.22MB total
+Showing top 10 nodes out of 16
       flat  flat%   sum%        cum   cum%
-   22.01MB 87.99% 87.99%    22.01MB 87.99%  runtime.malg
-    1.91MB  7.64% 95.62%     1.91MB  7.64%  time.Sleep
-    1.10MB  4.38%   100%     1.10MB  4.38%  runtime.allgadd
-         0     0%   100%     1.91MB  7.64%  main.cons
-         0     0%   100%    23.10MB 92.36%  runtime.mstart
-         0     0%   100%    23.10MB 92.36%  runtime.newproc.func1
-         0     0%   100%    23.10MB 92.36%  runtime.newproc1
-         0     0%   100%    23.10MB 92.36%  runtime.systemstack
+   33.01MB 46.35% 46.35%    33.01MB 46.35%  runtime.malg
+   14.69MB 20.63% 66.98%    14.69MB 20.63%  time.Sleep
+    9.50MB 13.34% 80.32%     9.50MB 13.34%  sync.runtime_SemacquireMutex
+    4.50MB  6.32% 86.64%     4.50MB  6.32%  errors.New (inline)
+    4.33MB  6.08% 92.72%     4.33MB  6.08%  runtime.allgadd
+    3.46MB  4.86% 97.58%    12.96MB 18.20%  main.enqueue
+    1.72MB  2.42%   100%     1.72MB  2.42%  runtime/pprof.StartCPUProfile
+         0     0%   100%    19.19MB 26.95%  main.cons
+         0     0%   100%     4.50MB  6.32%  main.dequeue
+         0     0%   100%     1.72MB  2.42%  main.main
 ```
 
-This is rather surprising! 
-Our memory use is half that of the version using channels. 
+Our memory use is a fair bit less than the channel implementation. 
 Let's try running this one more time: 
 
 ```
-Showing nodes accounting for 39249.53kB, 100% of 39249.53kB total
+(pprof) top
+Showing nodes accounting for 78.02MB, 100% of 78.02MB total
+Showing top 10 nodes out of 16
       flat  flat%   sum%        cum   cum%
-36365.31kB 92.65% 92.65% 36365.31kB 92.65%  runtime.malg
- 1121.44kB  2.86% 95.51%  1121.44kB  2.86%  main.enqueue
- 1121.44kB  2.86% 98.37%  1121.44kB  2.86%  runtime.allgadd
-  641.34kB  1.63%   100%   641.34kB  1.63%  time.Sleep
-         0     0%   100%   641.34kB  1.63%  main.cons
-         0     0%   100% 37486.75kB 95.51%  runtime.mstart
-         0     0%   100% 37486.75kB 95.51%  runtime.newproc.func1
-         0     0%   100% 37486.75kB 95.51%  runtime.newproc1
-         0     0%   100% 37486.75kB 95.51%  runtime.systemstack
+   35.01MB 44.88% 44.88%    35.01MB 44.88%  runtime.malg
+      13MB 16.66% 61.54%       13MB 16.66%  sync.runtime_SemacquireMutex
+   10.86MB 13.92% 75.46%    10.86MB 13.92%  time.Sleep
+    6.56MB  8.40% 83.87%    19.56MB 25.07%  main.enqueue
+       6MB  7.69% 91.56%        6MB  7.69%  errors.New (inline)
+    5.43MB  6.96% 98.52%     5.43MB  6.96%  runtime.allgadd
+    1.16MB  1.48%   100%     1.16MB  1.48%  runtime/pprof.StartCPUProfile
+         0     0%   100%    16.86MB 21.61%  main.cons
+         0     0%   100%        6MB  7.69%  main.dequeue
+         0     0%   100%     1.16MB  1.48%  main.main
 ```
 
-This time memory usage is almost 40Mb! 
-A rather strange result seeing as it was only using about 25MB before. 
+This time memory usage is about 78MB. 
+A bit strange seeing as it was only using about 71MB before. 
 
 ### Analysis
 
