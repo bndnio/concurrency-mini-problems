@@ -7,7 +7,7 @@ import (
 
 var wg sync.WaitGroup
 var hReady = make(chan bool)
-var oReady = make(chan bool, 2)
+var oReady = make(chan bool)
 
 func H() {
 	hReady <- true

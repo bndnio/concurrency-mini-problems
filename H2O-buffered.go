@@ -6,21 +6,21 @@ import (
 )
 
 var wg sync.WaitGroup
-var hReady = make(chan bool)
+var hReady = make(chan bool, 2)
 var oReady = make(chan bool, 2)
 
 func H() {
-	<- oReady
 	hReady <- true
+	<- oReady
 	fmt.Println("H through")
 	wg.Done()
 }
 
 func O() {
-	oReady <- true
-	oReady <- true
 	<- hReady
 	<- hReady
+	oReady <- true
+	oReady <- true
 	fmt.Println("O through")
 	wg.Done()
 }
