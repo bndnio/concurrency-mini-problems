@@ -4,6 +4,68 @@ Assignment #1
 
 # Introduction
 
+Assignment #1 is a great opportunity for student's in Professor Yvone Coady's 
+Concurrency class (UVIC CSC 464/564) to experience, measure, and attempt to solve 
+concurrency problems. 
+The assignment consists of 5 problems from the Little Book of Semaphores by 
+Allen B. Downey (Version 2.2.1), and 1 problem that students have arrived at 
+on their own. 
+The problems from the Little Book of Semaphores are chosed by students, 
+and intended to model real life problems and scenarios. 
+The 6th problem (student's choice) is inteded to be an interesting problem, 
+or one it's related to their final project.
+
+This document is broken down into the following sections. 
+This introduction section, outlining the assignment parameters. 
+A methodology section, describing how I performed measurements and 
+analysis of software implementations to problems as well as where I 
+gathered inforamation about the tooling. 
+The discussion section, where each problem is broken down into it's relevance, 
+code/runtime characteristics, and analysis. 
+And lastly, a conclusion section, which contains a highlevel overview of the 
+project, realizations, and closing remarks.
+
+# Methodology
+
+For each problem, I wrote two or more implementations. 
+These either implemented solutions in a different fashion in the same language, 
+or a similar fashion in a different language. 
+
+For solutions in GoLang, I use a tool called `pprof`. 
+It allowed me to collect cpu and memory resource information about the go program. 
+In particular, I can see exactly how long it took to execute, 
+what routines took however long to execute, how much memory was used, 
+and what lines of code were responsible. 
+Resources used to understand this tool are included 
+[here (understanding profiling tool)](https://jvns.ca/blog/2017/09/24/profiling-go-with-pprof/), 
+[here (profiling tool documentation & setup)](https://blog.golang.org/profiling-go-programs), 
+[here (memory profiling gotcha)](https://austburn.me/blog/go-profile.html),
+[and here (runtime pprof tool)](https://golang.org/pkg/runtime/pprof/)/ 
+[here (http pprof tool)](https://golang.org/pkg/net/http/pprof/)
+
+In Node, I'm using the built in V8 profiler. 
+It breaks down what languages inside the program are used for what amount of time. 
+Diving in futher, it breaks down what events use how much time. 
+Since we've only done one problem in Node, and we're mostly interested in it's 
+runtime in various scenarios, we are not diving into memory usage 
+(also because it requires additional libraries). 
+Resourced used to understand Node's V8 profiling tools are included 
+[here](https://blog.ghaiklor.com/profiling-nodejs-applications-1609b77afe4e).
+
+And in Python, I use their built-in profiling tools. 
+In particular `profile` and `cProfile` for script time, function execution times, 
+and cpu and memory resource consumption.
+I found out and learned most from the python docs 
+[found here](https://docs.python.org/3/library/profile.html).
+
+After performing measurements on each problem, 
+I analyse the different implementations by comparing and contrasting 
+their correctness, comprehesability, and performance. 
+For some problems some of these cases are harder to make an argument for. 
+However, in each scenario I do my best to use logic and metrics, 
+backing them up with logical pathways or reasonable justification
+(which I hope is correct!).
+
 # Discussion
 
 ## (1) Producer/Consumer
