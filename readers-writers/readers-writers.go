@@ -1,8 +1,9 @@
 package main
 
 import (
-	"fmt"
+	// "fmt"
 	"sync"
+	"errors"
 	"math/rand"
 )
 
@@ -12,7 +13,9 @@ var readerCount = 0
 var wg sync.WaitGroup
 var ds = make([]int, 0)
 
-func reader() int {
+func reader() (int, error) {
+	defer wg.Done()
+	
 	mutex.Lock()
 	if readerCount == 0 {
 		roomEmpty.Lock()
@@ -20,8 +23,9 @@ func reader() int {
 	readerCount++
 	mutex.Unlock()
 
+	// fmt.Println("read: ", out)
+	if len(ds) == 0 {return -1, errors.New("empty queue") }
 	out := ds[rand.Intn(len(ds))]
-	fmt.Println("read: ", out)
 
 	mutex.Lock()
 	readerCount--
@@ -29,8 +33,7 @@ func reader() int {
 		roomEmpty.Unlock()
 	}
 	mutex.Unlock()
-	defer wg.Done()
-	return out
+	return out, nil
 }
 
 func writer(num int) {
@@ -38,7 +41,7 @@ func writer(num int) {
 	
 	// *** START CRITICAL SECTION ***
 	ds = append(ds, num)
-	fmt.Println("wrote: ", num)
+	// fmt.Println("wrote: ", num)
 	// *** END CRITICAL SECTION ***
 
 	wg.Done()
@@ -46,13 +49,13 @@ func writer(num int) {
 }
 
 func main() {
-	for i:=0; i<10; i++ {
+	for i:=0; i<110; i++ {
 		wg.Add(1)
-		go writer(i)
-	}
-	for i:=0; i<100; i++ {
-		wg.Add(1)
-		go reader()
+		if i % 10 == 0 {
+			go writer(i)
+		} else {
+			go reader()
+		}
 	}
 	wg.Wait()
 }
