@@ -4,7 +4,7 @@ Assignment #1
 
 # Introduction
 
-Assignment #1 is a great opportunity for student's in Professor Yvone Coady's 
+Assignment #1 is a great opportunity for students in Professor Yvone Coady's 
 Concurrency class (UVIC CSC 464/564) to experience, measure, and attempt to solve 
 concurrency problems. 
 The assignment consists of 5 problems from the Little Book of Semaphores by 
@@ -16,10 +16,9 @@ The 6th problem (student's choice) is intended to be an interesting problem,
 or one it's related to their final project.
 
 This document is broken down into the following sections. 
-This introduction section, outlining the assignment parameters. 
-A methodology section, describing how I performed measurements and 
-analysis of software implementations to problems as well as where I 
-gathered information about the tooling. 
+This introduction section outlines the assignment parameters. 
+A methodology section, which describes how I measured solution implementations,
+and where I gathered information about the tooling. 
 The discussion section, where each problem is broken down into it's relevance, 
 code/runtime characteristics, and analysis. 
 And lastly, a conclusion section, which contains a high-level overview of the 
@@ -32,13 +31,13 @@ These either implemented solutions in a different fashion in the same language,
 or a similar fashion in a different language. 
 The performance is then evaluated using a performance tool for that language 
 and comparing runtime and memory usage across the implementations with a fixed 
-input size and similar execution order (e.g. H and O atom functions are called 
+input size and similar execution order (e.g. H and O atom routines are called 
 in a similar order). 
 
-For solutions in GoLang, I use a tool called `pprof`. 
-It allowed me to collect cpu and memory resource information about the go program. 
+For implementations in GoLang, I use a tool called `pprof`. 
+It allowed me to collect cpu and memory resource information about go programs. 
 In particular, I can see exactly how long it took to execute, 
-what routines took however long to execute, how much memory was used, 
+what routines took how long to execute, how much memory was used, 
 and what lines of code were responsible. 
 Resources used to understand this tool are included 
 [here (understanding profiling tool)](https://jvns.ca/blog/2017/09/24/profiling-go-with-pprof/), 
@@ -49,9 +48,9 @@ Resources used to understand this tool are included
 
 In Node, I'm using the built in V8 profiler. 
 It breaks down what languages inside the program are used for what amount of time. 
-Diving in further, it breaks down what events use how much time. 
-Since we've only done one problem in Node, and we're mostly interested in it's 
-runtime in various scenarios, we are not diving into memory usage 
+Diving in further, it breaks down exactly what events use how much time. 
+Since only solutions was written in Node, and we're mostly interested in it's 
+runtime, we are not diving into memory usage 
 (also because it requires additional libraries). 
 Resourced used to understand Node's V8 profiling tools are included 
 [here](https://blog.ghaiklor.com/profiling-nodejs-applications-1609b77afe4e).
@@ -59,19 +58,18 @@ Resourced used to understand Node's V8 profiling tools are included
 And in Python, I use their built-in profiling tools. 
 In particular `profile` and `cProfile` for script time, function execution times, 
 and cpu and memory resource consumption.
-I found out and learned most from the python docs 
+I primarily learned from the python docs 
 [found here](https://docs.python.org/3/library/profile.html).
 
 After performing measurements on each problem, 
-I analyse the different implementations by comparing and contrasting 
+I analysed the different implementations by comparing and contrasting 
 their correctness, comprehensibility, and performance. 
-For some problems some of these cases are harder to make an argument for. 
+For some problems, some of these cases are harder to make an argument for. 
 However, in each scenario I do my best to use logic and metrics, 
-backing them up with logical pathways or reasonable justification
-(which I hope is correct!).
+backing them up with reasonable justification (which I hope is correct!).
 
 Note on the results: all measurements have been performed on my 
-laptop which is not running in single user mode, or in any contained environment. 
+laptop which is not running in single user mode, or providing any contained environment. 
 It is well understood that this isn't an ideal testing environment. 
 However, for the purposes of this assignment, it is considered sufficient and 
 relatively consistent (within the few minutes taken between tests of 
@@ -91,7 +89,16 @@ is being consumed and managed by a database system (or multiple!).
 
 ### Code and Runtime Characteristics
 
-The producer-consumer mechanism implemented consists of two separate routines
+The producer-consumer mechanism implemented consists of two separate routines. 
+A single consumer is spun up to start. 
+If it is successful in consuming data, it starts another go routine to help. 
+If it can't consume data for two consecutive tries (spaced 100ms and 200ms apart), 
+it becomes bored and kills itself. 
+
+The main function spins up 100 producers, each of whom tries to enqueue 1000 
+elements onto the shared data structure. 
+This creates competition and simulates a scenario where multiple producers 
+are sharing a data pool with multiple consumers.
 
 Running `pprof` for the first time, and on prod-cons-channels, we see:
 
@@ -151,8 +158,9 @@ ROUTINE ======================== main.cons in /Users/brnd/repo/csc464/a1/prod-co
 
 Looks like our print statements takes 1.45s of the 1.84s 
 it takes for the `cons` (consume) routine to run. 
-This must be some sort of bottleneck! 
-Let's remove it from the code base and rebuild and re-profile.
+This could be some sort of bottleneck! 
+Let's remove it from the code base and rebuild and re-profile 
+to find out.
 
 ```
 diff --git a/prod-cons-channels.go b/prod-cons-channels.go
@@ -211,7 +219,7 @@ Showing top 10 nodes out of 111
 
 Which looks very different, and takes way less time! 
 Loosing the output to console I/O saved us nearly an order of magnitude on our runtime. 
-It now looks like the most time is spend sleeping.
+It now looks like the most time is spend running usleep.
 However, given that it's unknown if and when the next element will be produced, 
 and the sleeping mechanism in the consumers allow us to prevent starving 
 the producers, there isn't much left to do improve in this implementation.  
@@ -235,7 +243,7 @@ Showing top 10 nodes out of 34
        2MB  2.07% 97.26%        2MB  2.07%  errors.New
 ```
 
-Noting that it looks like we're using a total of 96.81MB.
+Notice that it looks like we're using a total of 96.81MB.
 
 Now, we can compare this implementation with channels to one using mutexes.
 
@@ -261,7 +269,7 @@ Showing top 10 nodes out of 110
 
 Looking at duration, it appears this is slightly slower! 
 Though, wondering how much of that is due to runtime scheduling, let
-running it again. 
+run it again. 
 This time, we get: 
 
 ```
@@ -327,6 +335,9 @@ Showing top 10 nodes out of 16
 
 This time memory usage is about 78MB. 
 A bit strange seeing as it was only using about 71MB before. 
+But it makes sense that memory usage can vary due to garbage collection. 
+Also that our memory usage is lower than the channel version 
+since there are no messages being passed around and being held in memory.
 
 ### Analysis
 
@@ -334,11 +345,12 @@ A bit strange seeing as it was only using about 71MB before.
 
 Both implementations are a very easy to argue for correctness. 
 The channel implementation is easy to argue since data pushed onto a buffered 
-channel should always be safe. 
+channel _should_ be safe. 
 If there is too much data on the channel, that producer will simply wait. 
-In the mutex implementation. 
+In the mutex implementation we see that each side can freely access the shared 
+data structure, as long as they do so in a safe way using the mutex.
 
-Both implementations however, do have the posibility of starvation. 
+Both implementations however, do have the possibility of starvation. 
 The channel implementation less-so since there is room to drop 100 elements into a 
 buffered channel, giving time for the consumers to scale. 
 Whereas in the mutex solution there is only one mutex every routine must fight 
@@ -346,14 +358,13 @@ to acquire.
 Nevertheless, if there are too many producers attempting to enqueue information, 
 it could starve one that has been waiting a long time. 
 The hope though, in both implementations is that the consumers scale with demand, 
-and exit when bored, At least creating a scenario where producers can only be 
-starved by other producers. 
+and exit when bored. 
+At least creating a scenario where producers can only be starved by other producers. 
 
-One solution to this would be creating a queue, but this would encounter the same 
-issue if too many hit the service at once. 
-Though it would mitigate it since some order could be enforced, and scheduling 
-what routine hits the queueing mechanism first is the runtime mechanism's 
-responsibility.
+One solution to this would be creating a queue for producers to sit in once they arrive. 
+But this would encounter the same issue if too many hit the service at once. 
+Though it would mitigate it since some order could be enforced, but this relies on 
+scheduling what routine hits the queueing mechanism first, which isn't my responsibility.
 
 Winner: Both
 
@@ -364,7 +375,7 @@ The comprehensibility is very similar in both cases.
 They both use the same skeleton, and exactly the same code that doesn't involve 
 the locking mechanism. 
 
-The difference though is this particularly:  
+The difference though, is this:  
 
 ```golang
 func enqueue(num int) {
@@ -390,7 +401,7 @@ func enqueue(num int) {
 }
 ```
 
-It's clear the channel solution is much more elegant. 
+The channel solution is definitely more elegant. 
 It's shorter, cleaner, no extra code controlling access. 
 Just a buffered channel that producers can enqueue data to, and consumers 
 can dequeue from.
@@ -399,8 +410,8 @@ Winner: Channel implementation
 
 #### Performance
 
-Give then analysis above, we see the biggest improvement of performance was 
-omitting I/O in the form of printing to console. 
+Given then runtime characteristics above, we see the biggest improvement of 
+performance was omitting I/O in the form of printing to console. 
 This brought the channel implementation runtime down from 9.25s to 1.07s! 
 Comparing to the mutex implementation, runtime was relatively similar. 
 The first run of the mutex implementation clocked 1.09s, while the second measured 1.06s. 
@@ -422,29 +433,27 @@ this is a problem which can be easily tied to a real application.
 Readers/writers is similar to producers/consumers in the way that there are 
 two asymmetric actors interacting at a single point, being the data structure 
 that they share. 
-However here we need not worry about removing (or consuming) data, instead only 
-reading it. 
-However, when writing to the data structure, we need to ensure all readers 
-are locked out and not active in order to retain the integrity of the 
-data structure. 
+However, when writing, we need to ensure all readers are locked out and not 
+active in order to retain the integrity of the data structure. 
 This is similar to any software system which receives data which must be stored, 
-as well as requests to view this data. 
+that also fulfils requests to view this data. 
 A particular example of this could be an RESTful http server. 
 It could be receiving and executing requests simultaneously to write data 
-to a data store and read from it, 
-but needs to simultaneously control reads and writes. 
+to a data store and read from it. 
+Where threads handling these requests need to control who has control to perform 
+reads and writes. 
 
 ### Code and Runtime Characteristics
 
-In this section we compare a reader-writer go program, 
+In this section we compare a readers/writers go program, 
 with two variations of it written in Node.js. 
-The first is written with async and Promise await, while the second is 
-in a completely sequential nature. 
+The first of the Node implementations is written with async and Promise await, 
+while the second is done in a completely sequential nature. 
 The reason for exploring this, is because Node runs on an event loop and we're not 
 handling any I/O, there's not actually any asynchronous actions occurring. 
-And asynchronous function is queued up, and then they execute one at a time. 
+And when asynchronous function are queued up, then can they execute one at a time. 
 
-First checking the time it takes for the Node scripts to process 1000000 
+First we check the time it takes for the Node scripts to process 1000000 
 elements using bash's `time` library: 
 we find that the async version runs according to: 
  
@@ -475,7 +484,7 @@ the async implementation:
      14    1.9%          Unaccounted
 ```
 
-vs. the sequential implentation
+vs. the sequential implementation
 
 ```
  [Summary]:
@@ -487,7 +496,8 @@ vs. the sequential implentation
      10    2.8%          Unaccounted
 ```
 
-We can see in the sequential process we're running far fewer tics in all categories. 
+We can see in the sequential process we're running has far fewer tics in all categories. 
+Therefore meaning far less time was spent overall, and in every type of routine. 
 Because we're not actually doing anything async, adding the async syntax 
 likely just add significant overhead.
 
@@ -593,13 +603,13 @@ regardless of if they're reading or writing.
 For the go implementation, it's a bit trickier. 
 Here, a light-switch mechanism is applied. 
 If a reader is the first in the room, it turns the light on 
-(says the room is not empty). 
+(saying the room is not empty). 
 Readers may come and go as they please from then until 
 the last reader is going to leave. 
 If a reader is the last to leave, they turn the light-switch off 
 (mark room as empty). 
-Once the room is empty, the writer may enter, say the room is 
-not empty (turn the light-switch back on). 
+Once the room is empty, the writer may enter, and claim the room 
+saying it is not empty (by turning the light-switch back on). 
 At this point, any writer that attempts to enter must wait for the room 
 to unlock again. 
 And the first reader to attempt to enter will also be barred, while 
@@ -607,8 +617,8 @@ holding the readerCount Mutex.
 This ensures that no other reader can attempt to enter. 
 
 This implementation does have the problem of starvation for writers. 
-If the system is flooded with readers, then writers will never get 
-access to write their data. 
+If the system is flooded with readers or many writers, then some writers 
+may never get access to write their data. 
 
 Winner: Node (in a cheat-y sort of way)
 
@@ -625,22 +635,22 @@ The go implementation requires the reader to have a stronger
 grasp of the state of shared variables, who is in the room, and 
 who is allowed together. 
 While the go implementation follows a well defined pattern, 
-it is harder to understand right away.
+it isn't dead simple.
 
-Winner: Node (in a cheat-y sort of way)
+Winner: Node (in a cheat-y sort of way, again)
 
 #### Performance
 
 Depending on how you constrain the system, performance could go 
 either way. 
 In Node, it is reliable since there is no starvation and processes 
-requests in a first in first out (FIFO) manner. 
+requests are handled in a first in first out (FIFO) manner. 
 
 Given a large system to scale across, it's likely that go could 
 perform better. 
 But given the test environment on my laptop, Node ran faster. 
 
-Winner: Node (in a cheat-y sort of way)
+Winner: Node (in a cheat-y sort of way, again again)
 
 ## (3) Insert-Search-Delete
 
@@ -648,19 +658,20 @@ Winner: Node (in a cheat-y sort of way)
 
 The insert-search-delete is a relatable problem with many real-world applications. 
 The first and most obvious, is for a data structure which can handle concurrency. 
-This could be considered fundamental to implementation of concurrency at any scale, since without managing data, what else would happen with the output of a 
+This could be considered fundamental to implementation of concurrency at any scale, 
+since without managing data, what else would happen with the output of a 
 concurrent process. 
 Less obviously, this could be synonymous for the various roles which actors 
 (processes) would have on a concurrent system. 
 Similar to the first point, this is simply a larger scale. 
 For example, this state could be a user management system. 
-Where users can search of the directory, managers take on the role of searching 
+Where employees can search the directory, managers take on the role of searching 
 or inserting users, while administrators can take on the roll of the above 
 or deleting users. 
 Each of these actions should be done in a mutual exclusive fashion in order 
-to prevent data inconsistencies. And insertions (depending on the method) and 
-deletion require even more care in regards to how many can influence the system 
-at once. 
+to prevent data inconsistencies. 
+And insertions (depending on the method) and deletion require even more care, 
+since even two at once could overwrite the others' action. 
 
 Inserting searching and deleting are key components to any system, large or small. 
 Handling these requests concurrently is a fundamental part in computing everywhere 
@@ -872,7 +883,7 @@ Whoa, that's a difference!
 
 #### Correctness
 
-The criteria for the H2O problem are:
+The criteria for the H2O problem is:
 1. H atoms must wait for an O atom in order to move forward
 2. O atoms must wait for two H atoms in order to move forward
 
@@ -882,17 +893,19 @@ In the un-buffered implementation, the O routine holds until it's recieved two
 hReady signals from two separate H routines. 
 At this point there are exactly two H routines waiting for the okay from exactly 
 one O routine. 
-And the O routine has now passed the barrier waiting for H routines. 
-The O routine then release one O ready signal for one H routine to complete, and then one more for the other H routine to complete.
+Now the O routine has passed the barrier waiting for H routines. 
+The O routine then release one oReady signal for one H routine to complete, 
+and then one more for the other H routine to complete.
 
 The difference with the buffered implementation is that it allows the Hs to enter 
 the critical section without an O, but it does not let them through until they 
 have been bound to by an O. 
-Likewise, the Os may leave the crical section prior to Hs acknowledging it; 
+Likewise, an O may leave the crical section prior it's Hs acknowledging it; 
 but with the guarantee that there are exactly two Hs for each O, 
 this is not a problem.
 
-One caveat is that atoms passing are not necessarily the one allowed one another into the critical section. 
+One caveat is that atoms passing are not necessarily the one that 
+allowed one another into the critical section. 
 However, since we are still satisfying the criteria, this is not an issue. 
 
 Winner: Both
@@ -903,15 +916,15 @@ Both solutions are short and simple.
 The un-buffered solution is slightly easier to mentally trace though, since the 
 reader doesn't need to remember the size or what is in the buffered channel. 
 They read through, see when a routine must wait, and when it sends a message. 
-Otherwise one must conceptualize given the possible states of the buffered channel 
-what coule happen.
+Otherwise one must conceptualize the possible states of the buffered channel and
+what coule happen in each scenario.
 
 Winner: Un-buffered
 
 #### Performance
 
 We see that the runtimes for 1000000 H2O moledules with an ideal execution path 
-is only 2.16s and 2.05s, for the un-buffered and buffered channel 
+is only 2.16s and 2.05s for the un-buffered and buffered channel 
 implementations, respectively. 
 And the memory usage is only 8.5MB and 8MB, respectively.
 That means the difference in speed is less than 5%, and memory usage is only a 
@@ -919,9 +932,9 @@ That means the difference in speed is less than 5%, and memory usage is only a
 From our experience comparing the producer/consumer problem, it's possible these 
 differences are due to the runtime environment. 
 
-However, when we look at the runtimes for 1000000 H2O molecules in a least 
-optimal execution path, our runtimes jumps to 9.27s and 7.99s, respectively. 
-And memory usage of 765.22MB and 729.21MB, respecitvely. 
+However, when we look at the runtimes for the same number of H2O molecules in a 
+least optimal execution path, our runtimes jump to 9.27s and 7.99s, respectively. 
+And memory usage to 765.22MB and 729.21MB, respecitvely. 
 What first seemed like a minor difference due to runtime variance, is 
 exacerbated here given the un-ideal scenario. 
 It's likely the extra routine switching in the un-buffered solution, 
@@ -939,13 +952,13 @@ Patrons represent jobs arriving somewhere for computation (at the sushi bar).
 Jobs can arrive and complete as necessary. 
 But if the available space for jobs is completely used up, some cool-down mechanism 
 is employed. 
-In the case the cool-down mechanism requires all jobs to finish before allowing more. 
+In this case, the cool-down mechanism requires all jobs to finish before allowing more. 
 In real-world scenarios, it may require job loads reduce to 50%. 
-Justification could be for competing job sources using shared resources. 
+Justification could be for competing job requesters using shared resources. 
 If a single requester is using all 100% of the resources, they are throttled 
 to make room and prevent starvation for other requesters. 
-Some other requester could be for critical system processes, garbage collection, 
-or other peripherals/external systems.
+In this example 'some other requester' could be a groups of system processes, 
+garbage collection, or other peripherals/external systems.
 
 ### Code and Runtime Characteristics
 
@@ -967,9 +980,9 @@ nature.
 The tangle consists of the idea that in order for some work to be pushed onto the 
 network, it must first do work to contribute to the network. 
 It is a directed acyclic graph, where each piece of work is represented as a node. 
-As an actor wishes to add some work to the system, it must verify the work 
+If an actor wishes to add some work to the system, it must verify the work 
 of two others (nodes). 
-When verified, a directed arrow is created from the nodes which recieved the 
+Once complete, a directed arrow is created from the nodes which recieved the 
 verification to the node requesting work. 
 
 For now, we will simplify the system, ignoring weighting and instead treating 
@@ -991,5 +1004,12 @@ TODO:
 
 # Conclusion
 
-Surprises!  
-- Node seq runs faster than async by a large margin
+So far this assignment has been a great experience in designing and writing 
+concurrent software, troubleshooting, and profiling. 
+
+A few great realizations that occured from my work were that concurrent is 
+really not always faster, Node sequential can be super efficient, and 
+overhead can be a real problem in many languages (particularily Node and GoLang). 
+
+Concurrent software is fun to think about and develop. 
+But without care, can be a real pain in the butt.
