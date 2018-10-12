@@ -413,13 +413,162 @@ two asymetric actors interacting at a single point, being the data structure
 that they share. 
 However here we need not worry about removing (or consuming) data, instead only 
 reading it. 
+However, when writing to the data structure, we need to ensure all readers 
+are locked out and not active in order to retain the integrity of the 
+data structure. 
 This is similar to any software system which recieves data which must be stored, 
 as well as requests to view this data. 
 A particular example of this could be an RESTful http server. 
 It could be recieving and executing requests simultaneously to write data 
-to a data store and read from it. 
+to a data store and read from it, 
+but needs to simultaneously control reads and writes. 
 
 ### Code and Runtime Characteristics
+
+In this section we compare a reader-writer go program, 
+with two variations of it written in Node.js. 
+The first is written with async and Promise await, while the second is 
+in a completely sequential nature. 
+The reason for exploring this, is because Node runs on an event loop and we're not 
+handling any I/O, there's not actually any asynchronous actions occuring. 
+And asynchronous function is queued up, and then they execute one at a time. 
+
+First checking the time it takes for the Node scripts to process 1000000 
+elements using bash's `time` library: 
+we find that the async version runs according to: 
+ 
+```
+node readers-writers-async.js  1.71s user 0.27s system 213% cpu 0.925 total
+```
+
+and the sequential version's run stats are:  
+
+```
+node readers-writers-seq.js  0.11s user 0.02s system 95% cpu 0.133 total
+```
+
+What a huge difference! 
+The sequential version is 15 times faster, and uses less than half the 
+the computing power. 
+
+Diving in, using Nodes `prof` and `prof-process` we see for 
+the async implementation:
+
+```
+ [Summary]:
+   ticks  total  nonlib   name
+    150   20.5%   20.8%  JavaScript
+    558   76.3%   77.3%  C++
+    354   48.4%   49.0%  GC
+      9    1.2%          Shared libraries
+     14    1.9%          Unaccounted
+```
+
+vs. the sequential implentation
+
+```
+ [Summary]:
+   ticks  total  nonlib   name
+     12    3.4%    3.4%  JavaScript
+    328   91.9%   93.7%  C++
+      5    1.4%    1.4%  GC
+      7    2.0%          Shared libraries
+     10    2.8%          Unaccounted
+```
+
+We can see in the sequential process we're running far fewer tics in all categories. 
+Because we're not actually doing anything async, adding the async syntax 
+likely just add significant overhead.
+
+Now to see what our go program's cpu and memory usage looks like. 
+Starting with 1000000 writers as we did with the Node scripts.
+
+```
+Duration: 625.19ms, Total samples = 1.28s (204.74%)
+Entering interactive mode (type "help" for commands, "o" for options)
+(pprof) top
+Showing nodes accounting for 920ms, 71.88% of 1280ms total
+Showing top 10 nodes out of 88
+      flat  flat%   sum%        cum   cum%
+     490ms 38.28% 38.28%      490ms 38.28%  runtime.usleep
+     110ms  8.59% 46.88%      190ms 14.84%  sync.(*Mutex).Lock
+      60ms  4.69% 51.56%       60ms  4.69%  runtime.memclrNoHeapPointers
+      50ms  3.91% 55.47%       50ms  3.91%  runtime.procyield
+      40ms  3.12% 58.59%      370ms 28.91%  main.reader
+      40ms  3.12% 61.72%       40ms  3.12%  runtime.gfget
+      40ms  3.12% 64.84%       40ms  3.12%  runtime.pthread_cond_wait
+      30ms  2.34% 67.19%       30ms  2.34%  runtime.deferreturn
+      30ms  2.34% 69.53%      440ms 34.38%  runtime.goexit0
+      30ms  2.34% 71.88%       30ms  2.34%  runtime.pthread_cond_signal```
+
+```
+
+```
+(pprof) top
+Showing nodes accounting for 13429.24kB, 100% of 13429.24kB total
+Showing top 10 nodes out of 13
+      flat  flat%   sum%        cum   cum%
+ 6036.98kB 44.95% 44.95%  6036.98kB 44.95%  main.writer
+ 4097.50kB 30.51% 75.47%  4097.50kB 30.51%  runtime.malg
+ 1536.14kB 11.44% 86.90%  1536.14kB 11.44%  sync.runtime_SemacquireMutex
+ 1184.27kB  8.82% 95.72%  1184.27kB  8.82%  runtime/pprof.StartCPUProfile
+  574.34kB  4.28%   100%   574.34kB  4.28%  runtime.allgadd
+         0     0%   100%  1184.27kB  8.82%  main.main
+         0     0%   100%  1536.14kB 11.44%  main.reader
+         0     0%   100%  1184.27kB  8.82%  runtime.main
+         0     0%   100%  4671.84kB 34.79%  runtime.mstart
+         0     0%   100%  4671.84kB 34.79%  runtime.newproc.func1
+```
+
+and bumping up the input size to 10000000, 
+
+```
+Duration: 4.52s, Total samples = 11.85s (262.03%)
+Entering interactive mode (type "help" for commands, "o" for options)
+(pprof) top
+Showing nodes accounting for 8650ms, 73.00% of 11850ms total
+Dropped 92 nodes (cum <= 59.25ms)
+Showing top 10 nodes out of 87
+      flat  flat%   sum%        cum   cum%
+    5110ms 43.12% 43.12%     5110ms 43.12%  runtime.usleep
+    1100ms  9.28% 52.41%     1760ms 14.85%  sync.(*Mutex).Lock
+     390ms  3.29% 55.70%      390ms  3.29%  runtime.pthread_cond_signal
+     370ms  3.12% 58.82%      420ms  3.54%  runtime.gfget
+     370ms  3.12% 61.94%      790ms  6.67%  sync.(*Mutex).Unlock
+     360ms  3.04% 64.98%     3180ms 26.84%  main.reader
+     340ms  2.87% 67.85%      340ms  2.87%  runtime.procyield
+     210ms  1.77% 69.62%     2420ms 20.42%  runtime.newproc1
+     200ms  1.69% 71.31%      200ms  1.69%  runtime.casgstatus
+     200ms  1.69% 73.00%      260ms  2.19%  sync.(*WaitGroup).Add
+```
+
+```
+(pprof) top
+Showing nodes accounting for 63.20MB, 100% of 63.20MB total
+Showing top 10 nodes out of 19
+      flat  flat%   sum%        cum   cum%
+   43.34MB 68.57% 68.57%    43.84MB 69.36%  main.writer
+       8MB 12.66% 81.23%        8MB 12.66%  runtime.malg
+       6MB  9.49% 90.73%        6MB  9.49%  sync.runtime_SemacquireMutex
+    3.50MB  5.54% 96.26%    12.71MB 20.11%  runtime.systemstack
+    1.20MB  1.91% 98.17%     1.20MB  1.91%  runtime.allgadd
+    1.16MB  1.83%   100%     1.16MB  1.83%  runtime/pprof.StartCPUProfile
+         0     0%   100%     1.16MB  1.83%  main.main
+         0     0%   100%     5.50MB  8.70%  main.reader
+         0     0%   100%     0.50MB  0.79%  math/rand.(*Rand).Int31
+         0     0%   100%     0.50MB  0.79%  math/rand.(*Rand).Int31n
+```
+
+Looks like for 10 times the input size, our go program takes about 10 times the 
+time and 4 times the memory space. 
+
+But, our processing time is far greater than the sequential Node process! 
+Thinking that GoLang is the fastest, especially in the face of a _scripting language_, 
+would lead one to forget about some important overhead. 
+Our go program has ONE MILLION routines running at once. 
+Even if they are cheap, they're not free! 
+Node, while maybe slower, runs everything sequentially, not worrying about 
+corrdinating, or sharing data, it just does.
 
 ### Analysis
 
@@ -480,11 +629,14 @@ the next stage of the pipeline.
 
 ### Code and Runtime Characteristics
 
-Let's compare the code the output commented out 
-as we've previously shown it slows down the program significantly. 
+<!-- TODO: check over this -->
+
+Let's compare the code with print statements commented out 
+since we've previously seen it slows down the program significantly. 
 Comparing the un-buffered channel vs the buffered channel implementation, 
 we want to see if adding a buffer to the channels allows for faster processing. 
-Since each O must wait for two Hs to tell it that they've bonded, and then the Hs 
+
+Because each O must wait for two Hs to tell it that they've bonded, and then the Hs 
 must wait for the O to tell them they've bonded, the idea behind the buffered 
 channel is that fewer context switches may occur. 
 This is because the Os can tell Hs it's ready and wait for them to bond, 
@@ -586,23 +738,23 @@ So that we create all the O routines, before creating any Hs.
 Now comparing the un-buffered vs. the buffered performance:
 
 ```
-Duration: 9.27s, Total samples = 19.88s (214.38%)
+Duration: 10.29s, Total samples = 22.91s (222.66%)
 Entering interactive mode (type "help" for commands, "o" for options)
-(pprof) top 10
-Showing nodes accounting for 14100ms, 70.93% of 19880ms total
-Dropped 84 nodes (cum <= 99.40ms)
-Showing top 10 nodes out of 99
+(pprof) top
+Showing nodes accounting for 14050ms, 61.33% of 22910ms total
+Dropped 110 nodes (cum <= 114.55ms)
+Showing top 10 nodes out of 111
       flat  flat%   sum%        cum   cum%
-    4030ms 20.27% 20.27%     4030ms 20.27%  runtime.usleep
-    2720ms 13.68% 33.95%     2790ms 14.03%  runtime.stackpoolalloc
-    1540ms  7.75% 41.70%     4030ms 20.27%  runtime.gentraceback
-    1510ms  7.60% 49.30%     1640ms  8.25%  runtime.gcWriteBarrier
-    1260ms  6.34% 55.63%     5260ms 26.46%  runtime.chanrecv
-     800ms  4.02% 59.66%      860ms  4.33%  runtime.getempty
-     620ms  3.12% 62.78%      950ms  4.78%  runtime.acquireSudog
-     580ms  2.92% 65.69%     4780ms 24.04%  runtime.newproc1
-     570ms  2.87% 68.56%      580ms  2.92%  runtime.gopark
-     470ms  2.36% 70.93%     3260ms 16.40%  runtime.malg.func1
+    4380ms 19.12% 19.12%     4390ms 19.16%  runtime.usleep
+    2480ms 10.82% 29.94%     2540ms 11.09%  runtime.stackpoolalloc
+    1300ms  5.67% 35.62%     6160ms 26.89%  runtime.chanrecv
+    1110ms  4.85% 40.46%     1140ms  4.98%  runtime.getempty
+     950ms  4.15% 44.61%     4370ms 19.07%  runtime.gentraceback
+     850ms  3.71% 48.32%      890ms  3.88%  runtime.gopark
+     770ms  3.36% 51.68%      770ms  3.36%  runtime.pthread_cond_signal
+     740ms  3.23% 54.91%     1240ms  5.41%  runtime.gcWriteBarrier
+     740ms  3.23% 58.14%     1490ms  6.50%  runtime.scanobject
+     730ms  3.19% 61.33%      800ms  3.49%  runtime.step
 ```
 
 ```
@@ -776,3 +928,6 @@ node (piece of work) to the queue for other actors to verify.
 #### Performance
 
 # Conclusion
+
+Surprises!  
+- Node seq runs faster than async by a large margin
