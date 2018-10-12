@@ -2,6 +2,10 @@ CSC 464 - Concurrency
 Prof. Yvonne Coady
 Assignment #1
 
+Written by: Brendon Earl
+
+---
+
 # Introduction
 
 Assignment #1 is a great opportunity for students in Professor Yvone Coady's 
@@ -23,6 +27,9 @@ The discussion section, where each problem is broken down into it's relevance,
 code/runtime characteristics, and analysis. 
 And lastly, a conclusion section, which contains a high-level overview of the 
 project, realizations, and closing remarks.
+
+Code for each problem can be found in 
+[my repository for these concurrency mini-problems](https://github.com/bndnio/concurrency-mini-problems).
 
 # Methodology
 
