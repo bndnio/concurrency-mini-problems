@@ -896,7 +896,7 @@ The criteria for the H2O problem is:
 
 These are accomplished by synchronizing channels.
 
-In the un-buffered implementation, the O routine holds until it's recieved two 
+In the un-buffered implementation, the O routine holds until it's received two 
 hReady signals from two separate H routines. 
 At this point there are exactly two H routines waiting for the okay from exactly 
 one O routine. 
@@ -907,7 +907,7 @@ and then one more for the other H routine to complete.
 The difference with the buffered implementation is that it allows the Hs to enter 
 the critical section without an O, but it does not let them through until they 
 have been bound to by an O. 
-Likewise, an O may leave the crical section prior it's Hs acknowledging it; 
+Likewise, an O may leave the critical section prior it's Hs acknowledging it; 
 but with the guarantee that there are exactly two Hs for each O, 
 this is not a problem.
 
@@ -924,13 +924,13 @@ The un-buffered solution is slightly easier to mentally trace though, since the
 reader doesn't need to remember the size or what is in the buffered channel. 
 They read through, see when a routine must wait, and when it sends a message. 
 Otherwise one must conceptualize the possible states of the buffered channel and
-what coule happen in each scenario.
+what could happen in each scenario.
 
 Winner: Un-buffered
 
 #### Performance
 
-We see that the runtimes for 1000000 H2O moledules with an ideal execution path 
+We see that the runtimes for 1000000 H2O molecules with an ideal execution path 
 is only 2.16s and 2.05s for the un-buffered and buffered channel 
 implementations, respectively. 
 And the memory usage is only 8.5MB and 8MB, respectively.
@@ -941,7 +941,7 @@ differences are due to the runtime environment.
 
 However, when we look at the runtimes for the same number of H2O molecules in a 
 least optimal execution path, our runtimes jump to 9.27s and 7.99s, respectively. 
-And memory usage to 765.22MB and 729.21MB, respecitvely. 
+And memory usage to 765.22MB and 729.21MB, respectively. 
 What first seemed like a minor difference due to runtime variance, is 
 exacerbated here given the un-ideal scenario. 
 It's likely the extra routine switching in the un-buffered solution, 
@@ -989,7 +989,7 @@ network, it must first do work to contribute to the network.
 It is a directed acyclic graph, where each piece of work is represented as a node. 
 If an actor wishes to add some work to the system, it must verify the work 
 of two others (nodes). 
-Once complete, a directed arrow is created from the nodes which recieved the 
+Once complete, a directed arrow is created from the nodes which received the 
 verification to the node requesting work. 
 
 For now, we will simplify the system, ignoring weighting and instead treating 
@@ -1014,9 +1014,9 @@ TODO:
 So far this assignment has been a great experience in designing and writing 
 concurrent software, troubleshooting, and profiling. 
 
-A few great realizations that occured from my work were that concurrent is 
+A few great realizations that occurred from my work were that concurrent is 
 really not always faster, Node sequential can be super efficient, and 
-overhead can be a real problem in many languages (particularily Node and GoLang). 
+overhead can be a real problem in many languages (particularly Node and GoLang). 
 
 Concurrent software is fun to think about and develop. 
 But without care, can be a real pain in the butt.
