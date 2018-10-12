@@ -5,8 +5,15 @@ import (
 	"sync"
 	"errors"
 	"math/rand"
+	"flag"
+	"os"
+	"log"
+	"runtime"
+	"runtime/pprof"
 )
 
+var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+var memprofile = flag.String("memprofile", "", "write memory profile to `file`")
 var roomEmpty = &sync.Mutex{}
 var mutex = &sync.Mutex{}
 var readerCount = 0
@@ -24,7 +31,15 @@ func reader() (int, error) {
 	mutex.Unlock()
 
 	// fmt.Println("read: ", out)
-	if len(ds) == 0 {return -1, errors.New("empty queue") }
+	if len(ds) == 0 {
+		mutex.Lock()
+		readerCount--
+		if readerCount == 0 {
+			roomEmpty.Unlock()
+		}
+		mutex.Unlock()
+		return -1, errors.New("empty queue")
+	}
 	out := ds[rand.Intn(len(ds))]
 
 	mutex.Lock()
@@ -37,6 +52,7 @@ func reader() (int, error) {
 }
 
 func writer(num int) {
+	defer wg.Done()
 	roomEmpty.Lock()
 	
 	// *** START CRITICAL SECTION ***
@@ -44,12 +60,21 @@ func writer(num int) {
 	// fmt.Println("wrote: ", num)
 	// *** END CRITICAL SECTION ***
 
-	wg.Done()
 	roomEmpty.Unlock()
 }
 
 func main() {
-	for i:=0; i<110; i++ {
+	flag.Parse()
+    if *cpuprofile != "" {
+        f, err := os.Create(*cpuprofile)
+        if err != nil {
+            log.Fatal(err)
+        }
+        pprof.StartCPUProfile(f)
+        defer pprof.StopCPUProfile()
+	}
+
+	for i:=0; i<1000000; i++ {
 		wg.Add(1)
 		if i % 10 == 0 {
 			go writer(i)
@@ -58,4 +83,17 @@ func main() {
 		}
 	}
 	wg.Wait()
+
+	if *memprofile != "" {
+		runtime.MemProfileRate = 1
+        f, err := os.Create(*memprofile)
+        if err != nil {
+            log.Fatal("could not create memory profile: ", err)
+        }
+        runtime.GC() // get up-to-date statistics
+        if err := pprof.WriteHeapProfile(f); err != nil {
+            log.Fatal("could not write memory profile: ", err)
+        }
+        f.Close()
+    }
 }

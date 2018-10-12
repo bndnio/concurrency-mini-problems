@@ -4,15 +4,15 @@ async function reader() {
     return ds[Math.floor(ds.length*Math.random())]
 }
 
-async function writier(num) {
+async function writer(num) {
     ds.push(num)
 }
 
 async function main() {
     const promises = []
-	for (let i=0; i<110; i++) {
+	for (let i=0; i<1000000; i++) {
         if (i % 10 === 0) {
-            promises.push(writier(i))
+            promises.push(writer(i))
         } else {
             promises.push(reader())
         }

@@ -44,14 +44,18 @@ func main() {
 	}
 
 	for i:=0; i<1000000; i++ {
-		wg.Add(3)
-		go H()
+		wg.Add(1)
 		go O()
+	}
+	for i:=0; i<1000000; i++ {
+		wg.Add(2)
+		go H()
 		go H()
 	}
 	wg.Wait()
 
 	if *memprofile != "" {
+		runtime.MemProfileRate = 1
         f, err := os.Create(*memprofile)
         if err != nil {
             log.Fatal("could not create memory profile: ", err)

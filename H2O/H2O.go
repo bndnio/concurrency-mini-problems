@@ -55,6 +55,7 @@ func main() {
 	wg.Wait()
 
 	if *memprofile != "" {
+		runtime.MemProfileRate = 1
         f, err := os.Create(*memprofile)
         if err != nil {
             log.Fatal("could not create memory profile: ", err)

@@ -2,19 +2,17 @@ const ds = []
 
 function reader() {
     const out = ds[Math.floor(ds.length*Math.random())]
-    console.log(out)
     return out
 }
 
-function writier(num) {
+function writer(num) {
     ds.push(num)
-    console.log(num)
 }
 
 function main() {
-	for (let i=0; i<110; i++) {
+	for (let i=0; i<1000000; i++) {
         if (i % 10 === 0) {
-            writier(i)
+            writer(i)
         } else {
             reader()
         }
