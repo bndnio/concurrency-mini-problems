@@ -10,19 +10,19 @@ concurrency problems.
 The assignment consists of 5 problems from the Little Book of Semaphores by 
 Allen B. Downey (Version 2.2.1), and 1 problem that students have arrived at 
 on their own. 
-The problems from the Little Book of Semaphores are chosed by students, 
+The problems from the Little Book of Semaphores are chosen by students, 
 and intended to model real life problems and scenarios. 
-The 6th problem (student's choice) is inteded to be an interesting problem, 
+The 6th problem (student's choice) is intended to be an interesting problem, 
 or one it's related to their final project.
 
 This document is broken down into the following sections. 
 This introduction section, outlining the assignment parameters. 
 A methodology section, describing how I performed measurements and 
 analysis of software implementations to problems as well as where I 
-gathered inforamation about the tooling. 
+gathered information about the tooling. 
 The discussion section, where each problem is broken down into it's relevance, 
 code/runtime characteristics, and analysis. 
-And lastly, a conclusion section, which contains a highlevel overview of the 
+And lastly, a conclusion section, which contains a high-level overview of the 
 project, realizations, and closing remarks.
 
 # Methodology
@@ -45,7 +45,7 @@ Resources used to understand this tool are included
 
 In Node, I'm using the built in V8 profiler. 
 It breaks down what languages inside the program are used for what amount of time. 
-Diving in futher, it breaks down what events use how much time. 
+Diving in further, it breaks down what events use how much time. 
 Since we've only done one problem in Node, and we're mostly interested in it's 
 runtime in various scenarios, we are not diving into memory usage 
 (also because it requires additional libraries). 
@@ -60,7 +60,7 @@ I found out and learned most from the python docs
 
 After performing measurements on each problem, 
 I analyse the different implementations by comparing and contrasting 
-their correctness, comprehesability, and performance. 
+their correctness, comprehensibility, and performance. 
 For some problems some of these cases are harder to make an argument for. 
 However, in each scenario I do my best to use logic and metrics, 
 backing them up with logical pathways or reasonable justification
@@ -82,7 +82,7 @@ is being consumed and managed by a database system (or multiple!).
 
 The producer-consumer mechanism implemented consists of two separate routines
 
-Running pprof for the first time, and on prod-cons-channels, we see:
+Running `pprof` for the first time, and on prod-cons-channels, we see:
 
 ```
 Duration: 10.30s, Total samples = 4.62s (44.84%)
@@ -353,7 +353,7 @@ The comprehensibility is very similar in both cases.
 They both use the same skeleton, and exactly the same code that doesn't involve 
 the locking mechanism. 
 
-The difference though is this particularily:  
+The difference though is this particularly:  
 
 ```golang
 func enqueue(num int) {
@@ -409,17 +409,17 @@ Winner: Mutex implementation
 Like the producer/consumer and insert-search-delete problems, 
 this is a problem which can be easily tied to a real application. 
 Readers/writers is similar to producers/consumers in the way that there are 
-two asymetric actors interacting at a single point, being the data structure 
+two asymmetric actors interacting at a single point, being the data structure 
 that they share. 
 However here we need not worry about removing (or consuming) data, instead only 
 reading it. 
 However, when writing to the data structure, we need to ensure all readers 
 are locked out and not active in order to retain the integrity of the 
 data structure. 
-This is similar to any software system which recieves data which must be stored, 
+This is similar to any software system which receives data which must be stored, 
 as well as requests to view this data. 
 A particular example of this could be an RESTful http server. 
-It could be recieving and executing requests simultaneously to write data 
+It could be receiving and executing requests simultaneously to write data 
 to a data store and read from it, 
 but needs to simultaneously control reads and writes. 
 
@@ -430,7 +430,7 @@ with two variations of it written in Node.js.
 The first is written with async and Promise await, while the second is 
 in a completely sequential nature. 
 The reason for exploring this, is because Node runs on an event loop and we're not 
-handling any I/O, there's not actually any asynchronous actions occuring. 
+handling any I/O, there's not actually any asynchronous actions occurring. 
 And asynchronous function is queued up, and then they execute one at a time. 
 
 First checking the time it takes for the Node scripts to process 1000000 
@@ -568,21 +568,74 @@ would lead one to forget about some important overhead.
 Our go program has ONE MILLION routines running at once. 
 Even if they are cheap, they're not free! 
 Node, while maybe slower, runs everything sequentially, not worrying about 
-corrdinating, or sharing data, it just does.
+coordinating, or sharing data, it just does.
 
 ### Analysis
 
 #### Correctness
 
-#### Comprehesibility
+Evaluating correctness in node (for both the asynchronous and sequential implementation) 
+is trivial. 
+They are both absolutely correct, since only a single function may access the data 
+regardless of if they're reading or writing. 
+
+For the go implementation, it's a bit trickier. 
+Here, a light-switch mechanism is applied. 
+If a reader is the first in the room, it turns the light on 
+(says the room is not empty). 
+Readers may come and go as they please from then until 
+the last reader is going to leave. 
+If a reader is the last to leave, they turn the light-switch off 
+(mark room as empty). 
+Once the room is empty, the writer may enter, say the room is 
+not empty (turn the light-switch back on). 
+At this point, any writer that attempts to enter must wait for the room 
+to unlock again. 
+And the first reader to attempt to enter will also be barred, while 
+holding the readerCount Mutex. 
+This ensures that no other reader can attempt to enter. 
+
+This implementation does have the problem of starvation for writers. 
+If the system is flooded with readers, then writers will never get 
+access to write their data. 
+
+Winner: Node (in a cheat-y sort of way)
+
+#### Comprehensibility
+
+Due to the simplicity of the sequential implementation, 
+Node is clearly more comprehensible. 
+Without locks, or any concurrent behaviour to worry about it's 
+far more comprehensible. 
+Even the asynchronous version (which is not really async) 
+is easy to see and understand. 
+
+The go implementation requires the reader to have a stronger 
+grasp of the state of shared variables, who is in the room, and 
+who is allowed together. 
+While the go implementation follows a well defined pattern, 
+it is harder to understand right away.
+
+Winner: Node (in a cheat-y sort of way)
 
 #### Performance
+
+Depending on how you constrain the system, performance could go 
+either way. 
+In Node, it is reliable since there is no starvation and processes 
+requests in a first in first out (FIFO) manner. 
+
+Given a large system to scale across, it's likely that go could 
+perform better. 
+But given the test environment on my laptop, Node ran faster. 
+
+Winner: Node (in a cheat-y sort of way)
 
 ## (3) Insert-Search-Delete
 
 ### Relevance
 
-The insert-serach-delete is a relatable problem with many real-world applications. 
+The insert-search-delete is a relatable problem with many real-world applications. 
 The first and most obvious, is for a data structure which can handle concurrency. 
 This could be considered fundamental to implementation of concurrency at any scale, since without managing data, what else would happen with the output of a 
 concurrent process. 
@@ -591,7 +644,7 @@ Less obviously, this could be synonymous for the various roles which actors
 Similar to the first point, this is simply a larger scale. 
 For example, this state could be a user management system. 
 Where users can search of the directory, managers take on the role of searching 
-or inserting users, while adminstrators can take on the roll of the above 
+or inserting users, while administrators can take on the roll of the above 
 or deleting users. 
 Each of these actions should be done in a mutual exclusive fashion in order 
 to prevent data inconsistencies. And insertions (depending on the method) and 
@@ -608,7 +661,7 @@ from local to distributed.
 
 #### Correctness
 
-#### Comprehesibility
+#### Comprehensibility
 
 #### Performance
 
@@ -616,10 +669,10 @@ from local to distributed.
 
 ### Relevance
 
-The H2O problem may intially seem strange, until one realizes it is an anlogy 
+The H2O problem may initially seem strange, until one realizes it is an analogy 
 for asynchronous systems which must synchronize. 
 The two H atoms waiting to join the O atom, and then proceeding at the same time 
-represents asynchronous functions which wait on eachother before exchanging 
+represents asynchronous functions which wait on each-other before exchanging 
 data to complete the task together. 
 An example of this could show up in data pipelines. 
 Where at a stage multiple asynchronous handlers are dispatched to retrieve some 
@@ -708,7 +761,7 @@ Showing nodes accounting for 8MB, 100% of 8MB total
 ```
 
 Seeing that this is suspiciously efficient. 
-Let's try changing the code so it's as inneficient as possible and compare. 
+Let's try changing the code so it's as inefficient as possible and compare. 
 To do this, we change: 
 
 ```
@@ -835,7 +888,7 @@ However, since we are still satisfying the criteria, this is not an issue.
 
 Winner: Both
 
-#### Comprehesibility
+#### Comprehensibility
 
 Both solutions are short and simple. 
 The un-buffered solution is slightly easier to mentally trace though, since the 
@@ -891,7 +944,7 @@ or other peripherals/external systems.
 
 #### Correctness
 
-#### Comprehesibility
+#### Comprehensibility
 
 #### Performance
 
@@ -923,7 +976,7 @@ node (piece of work) to the queue for other actors to verify.
 
 #### Correctness
 
-#### Comprehesibility
+#### Comprehensibility
 
 #### Performance
 
