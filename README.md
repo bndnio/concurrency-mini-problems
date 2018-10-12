@@ -30,6 +30,10 @@ project, realizations, and closing remarks.
 For each problem, I wrote two or more implementations. 
 These either implemented solutions in a different fashion in the same language, 
 or a similar fashion in a different language. 
+The performance is then evaluated using a performance tool for that language 
+and comparing runtime and memory usage across the implementations with a fixed 
+input size and similar execution order (e.g. H and O atom functions are called 
+in a similar order). 
 
 For solutions in GoLang, I use a tool called `pprof`. 
 It allowed me to collect cpu and memory resource information about the go program. 
@@ -65,6 +69,13 @@ For some problems some of these cases are harder to make an argument for.
 However, in each scenario I do my best to use logic and metrics, 
 backing them up with logical pathways or reasonable justification
 (which I hope is correct!).
+
+Note on the results: all measurements have been performed on my 
+laptop which is not running in single user mode, or in any contained environment. 
+It is well understood that this isn't an ideal testing environment. 
+However, for the purposes of this assignment, it is considered sufficient and 
+relatively consistent (within the few minutes taken between tests of 
+implementations for the same problem). 
 
 # Discussion
 
@@ -394,7 +405,7 @@ This brought the channel implementation runtime down from 9.25s to 1.07s!
 Comparing to the mutex implementation, runtime was relatively similar. 
 The first run of the mutex implementation clocked 1.09s, while the second measured 1.06s. 
 Laying on either side of the time of the channel implementation, it's fair so say 
-the rumtime is relatively equivalent, and depends more on scheduling at runtime.
+the runtime is relatively equivalent, and depends more on scheduling at runtime.
 
 The biggest difference between the two was the memory usage. 
 Although the memory usage measurement was inconsistent, the usage was more than a 
@@ -657,13 +668,13 @@ from local to distributed.
 
 ### Code and Runtime Characteristics
 
+TODO: 
+**Under Construction**
+
 ### Analysis
 
-#### Correctness
-
-#### Comprehensibility
-
-#### Performance
+TODO: 
+**Under Construction**
 
 ## (4) Building H20
 
@@ -682,10 +693,8 @@ the next stage of the pipeline.
 
 ### Code and Runtime Characteristics
 
-<!-- TODO: check over this -->
-
-Let's compare the code with print statements commented out 
-since we've previously seen it slows down the program significantly. 
+Let's compare the code with print statements commented out, 
+since we've previously seen that it significantly impacts performance. 
 Comparing the un-buffered channel vs the buffered channel implementation, 
 we want to see if adding a buffer to the channels allows for faster processing. 
 
@@ -940,13 +949,13 @@ or other peripherals/external systems.
 
 ### Code and Runtime Characteristics
 
+TODO: 
+**Under Construction**
+
 ### Analysis
 
-#### Correctness
-
-#### Comprehensibility
-
-#### Performance
+TODO: 
+**Under Construction**
 
 ## (6) Tangle Verification
 
@@ -972,13 +981,13 @@ node (piece of work) to the queue for other actors to verify.
 
 ### Code and Runtime Characteristics
 
+TODO: 
+**Under Construction**
+
 ### Analysis
 
-#### Correctness
-
-#### Comprehensibility
-
-#### Performance
+TODO: 
+**Under Construction**
 
 # Conclusion
 
