@@ -1,6 +1,11 @@
-package lightswitch_channel
+/*
+ * Note:
+ * This code is interpretted, modified, and applied from the
+ * pseudo code provided in the "Little Book of Semaphores"
+ * written by Allen B. Downey (version 2.2.1)
+ */
 
-// import "fmt"
+package lightswitch_channel
 
 type lightswitch struct {
 	mutex chan bool
@@ -17,22 +22,18 @@ func New() *lightswitch {
 
 func (ls *lightswitch) Lock(c chan bool) {
 	<- ls.mutex
-	
 	ls.counter += 1
 	if ls.counter == 1 {
 		<- c
 	}
-
 	ls.mutex <- true
 }
 
 func (ls *lightswitch) Unlock(c chan bool) {
-	<- (ls.mutex)
-	
+	<- ls.mutex
 	ls.counter -= 1
 	if ls.counter == 0 {
 		c <- true
 	}
-
 	ls.mutex <- true
 }
