@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"container/list"
-	"lightswitch"
+	"lightswitch_mutex"
 )
 
 var l *list.List = nil
@@ -13,8 +13,8 @@ var wg sync.WaitGroup
 var insertMutex = &sync.Mutex{}
 var noSearcher = &sync.Mutex{}
 var noInserter = &sync.Mutex{}
-var searchSwitch = lightswitch.New()
-var insertSwitch = lightswitch.New()
+var searchSwitch = lightswitch_mutex.New()
+var insertSwitch = lightswitch_mutex.New()
 
 func insert(value int) {
 	defer wg.Done()
@@ -76,6 +76,7 @@ func main() {
 			wg.Add(1)
 			delete(i-1)
 		}
+		print()
 	}
 
 	wg.Wait()

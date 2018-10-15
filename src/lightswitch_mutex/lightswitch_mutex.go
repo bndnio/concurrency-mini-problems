@@ -1,7 +1,6 @@
-package lightswitch
+package lightswitch_mutex
 
 import (
-	"fmt"
 	"sync"
 )
 
