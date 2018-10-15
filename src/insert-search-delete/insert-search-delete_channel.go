@@ -54,7 +54,8 @@ func delete(value int) {
 	defer wg.Done()
 	<- noSearcher
 	<- noInserter
-	l.Remove(find(value))
+	toRemove := find(value)
+	if toRemove != nil { l.Remove(toRemove) }
 	noInserter <- true
 	noSearcher <- true
 }
@@ -71,18 +72,18 @@ func main() {
 	noSearcher <- true
 	noInserter <- true
 	l = list.New()
-	for i:=0; i<100; i++ {
+	for i:=0; i<1000000; i++ {
 		if i%2 == 0 {
 			wg.Add(1)
-			insert(i)
+			go insert(i)
 		} else if i%3 == 0 {
 			wg.Add(10)
 			for j:=0; j<10; j++ {
-				search(i-1)
+				go search(i-1)
 			}
 		} else {
 			wg.Add(1)
-			delete(i-1)
+			go delete(i-1)
 		}
 		print()
 	}
