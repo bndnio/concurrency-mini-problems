@@ -1,7 +1,14 @@
+/*
+ * Note:
+ * This code is interpretted, modified, and applied from the
+ * pseudo code provided in the "Little Book of Semaphores"
+ * written by Allen B. Downey (version 2.2.1)
+ */
+
 package main
 
 import (
-	"fmt"
+	// "fmt"
 	"sync"
 	"container/list"
 	"lightswitch_mutex"
@@ -19,9 +26,8 @@ var insertSwitch = lightswitch_mutex.New()
 func insert(value int) {
 	defer wg.Done()
 	searchSwitch.Lock(noSearcher)
-	defer searchSwitch.Unlock(noSearcher)
-
 	l.PushBack(value)
+	searchSwitch.Unlock(noSearcher)
 }
 
 func find(value int) *list.Element {
@@ -37,27 +43,27 @@ func search(value int) *list.Element {
 	defer wg.Done()
 	insertSwitch.Lock(noInserter)
 	insertMutex.Lock()
-	defer insertSwitch.Unlock(noInserter)
-	defer insertMutex.Unlock()
+	found := find(value)
+	insertMutex.Unlock()
+	insertSwitch.Unlock(noInserter)
 
-	return find(value)
+	return found
 }
 
 func delete(value int) {
 	defer wg.Done()
 	noSearcher.Lock()
 	noInserter.Lock()
-	defer noSearcher.Unlock()
-	defer noInserter.Unlock()
-
 	l.Remove(find(value))
+	noInserter.Unlock()
+	noSearcher.Unlock()
 }
 
 func print() {
 	for e := l.Front(); e != nil; e = e.Next() {
-		fmt.Print(e.Value, " ")
+		// fmt.Print(e.Value, " ")
 	}
-	fmt.Print("\n")
+	// fmt.Print("\n")
 }
 
 func main() {

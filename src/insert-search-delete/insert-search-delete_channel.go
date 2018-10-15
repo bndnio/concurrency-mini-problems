@@ -1,4 +1,11 @@
-package main
+/*
+ * Note:
+ * This code is interpretted, modified, and applied from the
+ * pseudo code provided in the "Little Book of Semaphores"
+ * written by Allen B. Downey (version 2.2.1)
+ */
+
+ package main
 
 import (
 	// "fmt"
@@ -36,10 +43,11 @@ func search(value int) *list.Element {
 	defer wg.Done()
 	insertSwitch.Lock(noInserter)
 	<- insertMutex
+	found := find(value)
 	insertMutex <- true
 	insertSwitch.Unlock(noInserter)
 
-	return find(value)
+	return found
 }
 
 func delete(value int) {
