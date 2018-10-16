@@ -930,10 +930,8 @@ For example, this state could be a user management system.
 Where employees can search the directory, managers take on the role of searching 
 or inserting users, while administrators can take on the roll of the above 
 or deleting users. 
-Each of these actions should be done in a mutual exclusive fashion in order 
+Each of these actions should be done in a particular fashion in order 
 to prevent data inconsistencies. 
-And insertions (depending on the method) and deletion require even more care, 
-since even two at once could overwrite the others' action. 
 
 Inserting searching and deleting are key components to any system, large or small. 
 Handling these requests concurrently is a fundamental part in computing everywhere 
@@ -946,9 +944,9 @@ The insert search delete code was mostly inspired by the
 
 Here we do a direct comparison between using mutexes as 
 implemented in GoLang's `sync` library, 
-and using buffered channels so emulate mutexes. 
+and using buffered channels to emulate mutexes. 
 
-Running both with 100000 operators, with every second 
+Running both with 100000 operators, with every second routine
 being an inserter, every third (if not even) a searcher, 
 and the remainder being deleters. 
 
@@ -1000,7 +998,7 @@ Showing top 10 nodes out of 118
      720ms  3.61% 54.53%      750ms  3.76%  runtime.getempty
 ```
 
-`runtime.pthread_cond_signal` was a huge time hog for the 
+`runtime.pthread_cond_signal` was a huge resource hog for the 
 channels. 
 
 Diving in a little deeper into what lines took how long, 
@@ -1023,11 +1021,7 @@ In the find operation, this is the impacting line.
      1.05s      1.05s     43:           if e.Value == value {
 ```
 
-It's strange how poorly the channel implementation behaved. 
-I hope it's due to an anti-pattern I unknowningly followed, 
-and not a poor characteristic of the language!
-
-The last thing to check for now is the memory usage, 
+One last thing to check for now is the memory usage, 
 perhaps that will give us some clues.
 
 The channel implementation used 54.8MBs, 
@@ -1037,16 +1031,22 @@ producer/consumer problem the memory characteristics
 followed a similar pattern.
 
 To see if something was wrong with my implementation, 
-I tried a sample size of 100000. 
+I tried a sample size of 10000. 
 Decreasing the number of routines by an order of magnitude. 
 Somehow dropped the times down to 11 and 7 seconds!  
 The drop to 7 seconds isn't unreasonable for the mutex 
 implementation, but for the channels implementation 
 this was revealing! 
+The speedup was from almost 6 minutes to 11 seconds, for 
+only a 10x change in input size. 
+There must be some exponential running time aspect that 
+I am not aware of.
 
-There is likely something funky happening when a very large 
-number of routines are running concurrency and passing 
-messages through channels.
+It's strange how poorly the channel implementation behaved. 
+And even stranger that the line with the biggest time impact 
+had nothing to do with mutexes or channels. 
+I hope that this is due to an anti-pattern I unknowningly followed, 
+and not a poor characteristic of the language!
 
 ### Analysis
 
@@ -1070,18 +1070,18 @@ func search(value int) *list.Element {
 }
 ```
 
-Before searching, we just `Lock` `searchSwitch`, meaning 
+Before searching, we `Lock` `searchSwitch`, meaning 
 that if it's the first routine of it's type, 
 it will take a lock on the parameter there (`noSearcher`). 
 As long as it locks `noSearcher`, nothing which needs to 
 bar searchers from operating can run. 
-Then it finds the value. 
+It then finds the value. 
 Once found, it calls `Unlock` on `searchSearch`, 
 which would unlock the mutex if it is the last routine there. 
 And lastly, it returns the found value.
 
-
 Next for `insert`, we have:  
+
 ```golang
 func insert(value int) {
 	defer wg.Done()
@@ -1095,14 +1095,14 @@ func insert(value int) {
 
 It checks the 'lightswitch' `insertSwitch` on the way in, 
 locking `noInserter` if need be. 
-And then hold a mutex on the actual list to insert into. 
+And then holds a mutex on the actual list to insert into. 
 After inserting, it unlocks the mutex, and the runs 
 `Unlock` on the `insertSwitch` on it's way out. 
 This pattern protects the list when being appended to, 
 and ensures no other code will run as long as it needs to 
 bar insert routines.
 
-Lastly, `delete` looks like this:
+Lastly, `delete` looks like this: 
 
 ```golang
 func delete(value int) {
@@ -1117,16 +1117,16 @@ func delete(value int) {
 ```
 
 Being the most complicated of them all, delete needs to be 
-since it is the most drastic change. 
-It locks out searchers and inserters with 
-`noSearcher.Lock()` and `noInserter.Lock()`. 
-Find the value to remove with the find function, 
+since it performs the most impactful change. 
+It locks out searchers and inserters (or waits to do so) 
+with `noSearcher.Lock()` and `noInserter.Lock()`. 
+Finds the value to remove with the find function, 
 then removes it as long as that value was found. 
 It then `Unlock`s `noSearcher` and `noInserter`.
 
 Given the requirements: 
-- as many searchers can run at once
-- only a single inserter may run at once with searchers concurrently
+- many searchers can run at once
+- only a single inserter may run at once with many searchers concurrently
 - only a single delete routine may run with no concurrent searchers or inserters
 
 This code walk-through suggests that the implementation is correct.
@@ -1139,7 +1139,7 @@ While I had thought the channels would end up being more
 comprehensible since they're the 'golden child' of GoLang. 
 I believe using mutexes are actually much more readable. 
 
-Compare the lightswitch code next to each-other: 
+Comparing the lightswitch code next to each-other:
 
 ```golang
 func (ls *lightswitch) Lock(m *sync.Mutex) {
@@ -1163,13 +1163,14 @@ func (ls *lightswitch) Lock(c chan bool) {
 }
 ```
 
-It's more immediately clear what is happening with the 
-mutex version since it's a common programming paradigm. 
-Also, we know that mutexes can only be held by a single 
-routine. 
+It's clearer what is happening with the mutex version, 
+in part because it's a common programming paradigm. 
+We know that mutexes can only be held by a single 
+routine, so it's obvious what is happening with 
+`ls.mutex.Lock()` vs `<- ls.mutex`.
 The details surrounding how a channel has been set up 
-isn't immediately clear, and so the developer working 
-must remember that while tracing code. 
+also isn't immediately clear, and so the developer 
+working must remember that while tracing code. 
 
 Winner: Mutex
 
@@ -1179,7 +1180,10 @@ Given the huge difference in the code and runtime
 characteristics section, the mutex implementation way 
 outperforms the channel implementation. 
 This is could be due to garbage collection of the channels, 
-or the extra memory required
+overhead being more prohibitive with large numbers of routines,
+or the extra memory required.
+
+Winner: Mutex
 
 ## (5) Sushi Bar
 
@@ -1211,15 +1215,17 @@ The tangle is a concept in distributed computing.
 It is understood to be one of the competitors to blockchain due to it's lightweight 
 nature. 
 The tangle consists of the idea that in order for some work to be pushed onto the 
-network, it must first do work to contribute to the network. 
+network, that actor must first do work to contribute to the network. 
 It is a directed acyclic graph, where each piece of work is represented as a node. 
 If an actor wishes to add some work to the system, it must verify the work 
 of two others (nodes). 
-Once complete, a directed arrow is created from the nodes which received the 
-verification to the node requesting work. 
+Once other work is verified, a directed arrow is created from the nodes which 
+received the verification to the node requesting work. 
+Each node needs only two verifications, before it's considered 'verified' to 
+the rest of the network.
 
-For now, we will simplify the system, ignoring weighting and instead treating 
-work as a FIFO queue. 
+For now, we will simplify the system, ignoring weighting of nodes to work on 
+and instead treating it as a FIFO queue. 
 An actor can read a node at the same time as any others, but to verify it, it 
 must write the verified pointer to itself, so it must gain a write lock. 
 Once an actor has verified two nodes and pointed to itself, it can add it's 
@@ -1230,12 +1236,13 @@ node (piece of work) to the queue for other actors to verify.
 The Tangle verification, and tangle node code is strange. 
 I had though prior to implementing it would be much simpler. 
 The main issue I ran into, was managing the peer-to-peer 
-style of implementation where nodes are verifying one- another. 
-While having a supervisor manage a queue of nodes which 
-still required verification. 
+communication where nodes are verifying one-another,
+while having a supervisor manage a queue of nodes which 
+still required verification and communicating this to nodes 
+performing or needing work. 
 
 Passing messages back and forth was complicated and 
-the code appeared obscure. 
+the made the code obscure. 
 Furthermore, issues would arise at random times when the 
 count of routines rose above 50, 
 but don't occur consistently under 90. 
@@ -1261,7 +1268,7 @@ the number of nodes which could claim the verification,
 and managing the queue of nodes to process made for some 
 nasty spaghetti code. 
 
-While the verification looked okay:
+While the verification controller looked okay:
 ```golang
 	defer wg.Done()
 	newNode := tangle_node.New()
@@ -1305,7 +1312,7 @@ func (nd *Node) Verify(addr *Node, approved <-chan bool, cb chan<- bool) {
 	if verified == true {
 		// check for approval account again
 		<- nd.approvalMutex
-		// if full return false
+		// if full callback false
 		// otherwise increase approval count
 		if nd.approvalCount >= 2 || inSlice(addr, nd.outbound) == true  {
 			fmt.Println("mid fail")
@@ -1334,9 +1341,9 @@ Winner: No-One
 ### Correctness
 
 Because of the complexity, it's near impossible to 
-construct a strong argument for correctness. 
+construct a strong argument for correctness using static analysis. 
 And because of the multiple execution paths that provide 
-equivalent but not the same output, evaluating output for 
+equivalent but not identical output, evaluating output for 
 correctness is not simple either.
 
 Because of the unknown looping that randomly occurred 
@@ -1354,7 +1361,19 @@ Getting stuck in an infinite loop without a clear reason is
 definitely not a performant feature.
 
 To achieve decent performance, the implementation would 
-have to be re-architectured so that it is working first.
+have to be re-architectured so that it is working first. 
+I should have started by creating nodes that only allowed a single 
+verifier to work on it in order to reduce concurrent complexities. 
+Then, it would have been appropriate to drive it _faster_ 
+with more complex concurrent mechanisms and routines.
+
+From this and and the insert-search-delete problem, it's 
+made it apparent that mass concurrency and channels are 
+not always the best solution. 
+A well educated approach needs to be architected, and 
+re-architected until a working solution is found. 
+At that point it is safer to work forwards with more 
+performant solutions. 
 
 Winner: No-One
 
@@ -1362,12 +1381,11 @@ Winner: No-One
 
 This assignment has been a great experience in designing and writing, troubleshooting, and profiling concurrent software. 
 
-A few great realizations that occurred from my work were that full blown concurrency is really not always faster. Node sequential programming can be super efficient, and 
-overhead can be a real problem in many languages (particularly Node and GoLang). 
-And the number of routines in golang implementations can 
-have a severe impact on performance. 
-The idea that more is not always faster really rang true on 
-the insert-search-delete problem.
+A few great realizations that occurred from my work were that full blown concurrency is really not always faster. 
+- Node sequential programming can be super efficient, and overhead can be a real problem in many languages (particularly Node and GoLang).
+- The number of routines in golang implementations can have a severe impact on performance. 
+- The idea that more is not always faster really rang true on the insert-search-delete problem. 
+- And the complexity introduced to early in the tangle problem made for a 'tangled' solution!
 
 Concurrent software is fun to think about and develop. 
 But without care, it can be a real pain in the butt.
