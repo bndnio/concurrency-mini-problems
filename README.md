@@ -1,6 +1,6 @@
-CSC 464 - Concurrency
-Prof. Yvonne Coady
-Assignment #1
+CSC 464 - Concurrency  
+Prof. Yvonne Coady  
+Assignment #1  
 
 Written by: Brendon Earl
 
@@ -855,9 +855,9 @@ Whoa, that's a difference!
 
 #### Correctness
 
-The criteria for the H2O problem is:
-1. H atoms must wait for an O atom in order to move forward
-2. O atoms must wait for two H atoms in order to move forward
+The criteria for the H2O problem is:  
+1. H atoms must wait for an O atom in order to move forward  
+2. O atoms must wait for two H atoms in order to move forward  
 
 These are accomplished by synchronizing channels.
 
@@ -1124,10 +1124,10 @@ Finds the value to remove with the find function,
 then removes it as long as that value was found. 
 It then `Unlock`s `noSearcher` and `noInserter`.
 
-Given the requirements: 
-- many searchers can run at once
-- only a single inserter may run at once with many searchers concurrently
-- only a single delete routine may run with no concurrent searchers or inserters
+Given the requirements:  
+- many searchers can run at once  
+- only a single inserter may run at once with many searchers concurrently  
+- only a single delete routine may run with no concurrent searchers or inserters  
 
 This code walk-through suggests that the implementation is correct.
 
@@ -1251,10 +1251,10 @@ I also wrote a python implementation which mirrors the
 implementation style of the go code by using queues 
 instead of channels. 
 However, once this block arose with the go code, 
-I decided not to parallelize the python code for a few reasons:
-1. Because it was implemented with the same pattern, there would be no comprehensibility advantage, 
-2. There is no way to benchmark it against the go code due to lack of stability
-3. It's likely this approach needs re-architecting, which defeats the purpose of the direct comparison
+I decided not to parallelize the python code for a few reasons:  
+1. Because it was implemented with the same pattern, there would be no comprehensibility advantage,  
+2. There is no way to benchmark it against the go code due to lack of stability  
+3. It's likely this approach needs re-architecting, which defeats the purpose of the direct comparison  
 
 ## Analysis
 
@@ -1381,11 +1381,11 @@ Winner: No-One
 
 This assignment has been a great experience in designing and writing, troubleshooting, and profiling concurrent software. 
 
-A few great realizations that occurred from my work were that full blown concurrency is really not always faster. 
-- Node sequential programming can be super efficient, and overhead can be a real problem in many languages (particularly Node and GoLang).
-- The number of routines in golang implementations can have a severe impact on performance. 
-- The idea that more is not always faster really rang true on the insert-search-delete problem. 
-- And the complexity introduced to early in the tangle problem made for a 'tangled' solution!
+A few great realizations that occurred from my work were that full blown concurrency is really not always faster.  
+- Node sequential programming can be super efficient, and overhead can be a real problem in many languages (particularly Node and GoLang).  
+- The number of routines in golang implementations can have a severe impact on performance.  
+- The idea that more is not always faster really rang true on the insert-search-delete problem.  
+- And the complexity introduced to early in the tangle problem made for a 'tangled' solution!  
 
 Concurrent software is fun to think about and develop. 
 But without care, it can be a real pain in the butt.
