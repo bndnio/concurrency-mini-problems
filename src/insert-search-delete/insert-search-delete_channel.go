@@ -31,11 +31,13 @@ var noInserter = make(chan bool, 1)
 var searchSwitch = lightswitch_channel.New()
 var insertSwitch = lightswitch_channel.New()
 
-func insert(value int) {
+func search(value int) *list.Element {
 	defer wg.Done()
 	searchSwitch.Lock(noSearcher)
-	l.PushBack(value)
+	found := find(value)
 	searchSwitch.Unlock(noSearcher)
+	
+	return found
 }
 
 func find(value int) *list.Element {
@@ -47,15 +49,13 @@ func find(value int) *list.Element {
 	return nil
 }
 
-func search(value int) *list.Element {
+func insert(value int) {
 	defer wg.Done()
 	insertSwitch.Lock(noInserter)
 	<- insertMutex
-	found := find(value)
+	l.PushBack(value)
 	insertMutex <- true
-	insertSwitch.Unlock(noInserter)
-
-	return found
+	insertSwitch.Unlock(noInserter)	
 }
 
 func delete(value int) {
@@ -90,7 +90,7 @@ func main() {
 	noSearcher <- true
 	noInserter <- true
 	l = list.New()
-	for i:=0; i<1000000; i++ {
+	for i:=0; i<100000; i++ {
 		if i%2 == 0 {
 			wg.Add(1)
 			go insert(i)
