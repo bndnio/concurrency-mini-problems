@@ -948,7 +948,7 @@ Here we do a direct comparison between using mutexes as
 implemented in GoLang's `sync` library, 
 and using buffered channels so emulate mutexes. 
 
-Running both with 1000000 operators, with every second 
+Running both with 100000 operators, with every second 
 being an inserter, every third (if not even) a searcher, 
 and the remainder being deleters. 
 
@@ -1035,6 +1035,18 @@ while the mutex implementation used 35.7MB.
 This isn't shocking, as we've seen above in the 
 producer/consumer problem the memory characteristics 
 followed a similar pattern.
+
+To see if something was wrong with my implementation, 
+I tried a sample size of 100000. 
+Decreasing the number of routines by an order of magnitude. 
+Somehow dropped the times down to 11 and 7 seconds!  
+The drop to 7 seconds isn't unreasonable for the mutex 
+implementation, but for the channels implementation 
+this was revealing! 
+
+There is likely something funky happening when a very large 
+number of routines are running concurrency and passing 
+messages through channels.
 
 ### Analysis
 
@@ -1187,15 +1199,9 @@ to make room and prevent starvation for other requesters.
 In this example 'some other requester' could be a groups of system processes, 
 garbage collection, or other peripherals/external systems.
 
-### Code and Runtime Characteristics
+### Code and Runtime Characteristics + Analysis
 
-TODO: 
-**Under Construction**
-
-### Analysis
-
-TODO: 
-**Under Construction**
+Skipped :(
 
 ## (6) Tangle Verification
 
@@ -1221,22 +1227,147 @@ node (piece of work) to the queue for other actors to verify.
 
 ### Code and Runtime Characteristics
 
-TODO: 
-**Under Construction**
+The Tangle verification, and tangle node code is strange. 
+I had though prior to implementing it would be much simpler. 
+The main issue I ran into, was managing the peer-to-peer 
+style of implementation where nodes are verifying one- another. 
+While having a supervisor manage a queue of nodes which 
+still required verification. 
 
-### Analysis
+Passing messages back and forth was complicated and 
+the code appeared obscure. 
+Furthermore, issues would arise at random times when the 
+count of routines rose above 50, 
+but don't occur consistently under 90. 
 
-TODO: 
-**Under Construction**
+I also wrote a python implementation which mirrors the 
+implementation style of the go code by using queues 
+instead of channels. 
+However, once this block arose with the go code, 
+I decided not to parallelize the python code for a few reasons:
+1. Because it was implemented with the same pattern, there would be no comprehensibility advantage, 
+2. There is no way to benchmark it against the go code due to lack of stability
+3. It's likely this approach needs re-architecting, which defeats the purpose of the direct comparison
+
+## Analysis
+
+### Correctness
+
+The way of coordinating tasks among nodes and to the 
+supervisor was hard to understand. 
+The combination of the possibility of multiple concurrent 
+jobs executing to verify a single node, while restricting 
+the number of nodes which could claim the verification, 
+and managing the queue of nodes to process made for some 
+nasty spaghetti code. 
+
+While the verification looked okay:
+```golang
+	defer wg.Done()
+	newNode := tangle_node.New()
+
+	var isComplete int
+	for verified, i := 0, 0; verified < 2; i++ {
+		var comm = make(chan bool, 1)
+		var cb = make(chan bool)
+		go queue[i%len(queue)].Verify(newNode, comm, cb)
+		// ** node evaluation work would go here **
+		comm <- true
+		didVerify := <- cb
+		if didVerify { verified++ }
+	}
+	<- queueWriteMutex
+	queue = append(queue, newNode)
+	if isComplete {
+		queue = append(queue[:i%len(queue)], queue[((i%len(queue))+1):]...)
+	}
+      queueWriteMutex <- true
+```
+
+the tangle node got ugly quickly:
+
+```golang
+func (nd *Node) Verify(addr *Node, approved <-chan bool, cb chan<- bool) {
+	// check if Node already approved
+	<- nd.approvalMutex
+	if nd.approvalCount >= 2 || inSlice(addr, nd.outbound) == true {
+		fmt.Println("fast fail")
+		fmt.Println(nd.approvalCount >= 2)
+		nd.approvalMutex <- true
+		cb <- false
+		return
+	}
+	nd.approvalMutex <- true
+
+	// allow requester to do work
+	nd.workingMutex <- true
+	var verified = <- approved
+	if verified == true {
+		// check for approval account again
+		<- nd.approvalMutex
+		// if full return false
+		// otherwise increase approval count
+		if nd.approvalCount >= 2 || inSlice(addr, nd.outbound) == true  {
+			fmt.Println("mid fail")
+			cb <- false
+			nd.approvalMutex <- true 
+			<- nd.workingMutex
+			return
+		} else { 
+			nd.approvalCount++
+		}
+		// and mark verified if possible
+		if nd.approvalCount == 2 {
+			nd.verified = true
+		}
+		// and set outbound link to Node
+		nd.outbound = append(nd.outbound, addr)
+		nd.approvalMutex <- true 
+	}
+	<- nd.workingMutex
+	cb <- true
+}
+```
+
+Winner: No-One
+
+### Correctness
+
+Because of the complexity, it's near impossible to 
+construct a strong argument for correctness. 
+And because of the multiple execution paths that provide 
+equivalent but not the same output, evaluating output for 
+correctness is not simple either.
+
+Because of the unknown looping that randomly occurred 
+between 50 and 100 routines, it's fair to say this solution 
+is probably not correct. 
+
+And finally, because the python version followed the same 
+logic and structure, it likely is not correct either.
+
+Winner: No-One
+
+### Performance
+
+Getting stuck in an infinite loop without a clear reason is 
+definitely not a performant feature.
+
+To achieve decent performance, the implementation would 
+have to be re-architectured so that it is working first.
+
+Winner: No-One
 
 # Conclusion
 
-So far this assignment has been a great experience in designing and writing 
-concurrent software, troubleshooting, and profiling. 
+This assignment has been a great experience in designing and writing, troubleshooting, and profiling concurrent software. 
 
-A few great realizations that occurred from my work were that concurrent is 
-really not always faster, Node sequential can be super efficient, and 
+A few great realizations that occurred from my work were that full blown concurrency is really not always faster. Node sequential programming can be super efficient, and 
 overhead can be a real problem in many languages (particularly Node and GoLang). 
+And the number of routines in golang implementations can 
+have a severe impact on performance. 
+The idea that more is not always faster really rang true on 
+the insert-search-delete problem.
 
 Concurrent software is fun to think about and develop. 
-But without care, can be a real pain in the butt.
+But without care, it can be a real pain in the butt.
