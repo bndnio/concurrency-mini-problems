@@ -659,42 +659,7 @@ But given the test environment on my laptop, Node ran faster.
 
 Winner: Node (in a cheat-y sort of way, again again)
 
-## (3) Insert-Search-Delete
-
-### Relevance
-
-The insert-search-delete is a relatable problem with many real-world applications. 
-The first and most obvious, is for a data structure which can handle concurrency. 
-This could be considered fundamental to implementation of concurrency at any scale, 
-since without managing data, what else would happen with the output of a 
-concurrent process. 
-Less obviously, this could be synonymous for the various roles which actors 
-(processes) would have on a concurrent system. 
-Similar to the first point, this is simply a larger scale. 
-For example, this state could be a user management system. 
-Where employees can search the directory, managers take on the role of searching 
-or inserting users, while administrators can take on the roll of the above 
-or deleting users. 
-Each of these actions should be done in a mutual exclusive fashion in order 
-to prevent data inconsistencies. 
-And insertions (depending on the method) and deletion require even more care, 
-since even two at once could overwrite the others' action. 
-
-Inserting searching and deleting are key components to any system, large or small. 
-Handling these requests concurrently is a fundamental part in computing everywhere 
-from local to distributed. 
-
-### Code and Runtime Characteristics
-
-TODO: 
-**Under Construction**
-
-### Analysis
-
-TODO: 
-**Under Construction**
-
-## (4) Building H20
+## (3) Building H20
 
 ### Relevance
 
@@ -948,6 +913,261 @@ It's likely the extra routine switching in the un-buffered solution,
 causes the extra time and memory space. 
 
 Winner: Buffered
+
+## (4) Insert-Search-Delete
+
+### Relevance
+
+The insert-search-delete is a relatable problem with many real-world applications. 
+The first and most obvious, is for a data structure which can handle concurrency. 
+This could be considered fundamental to implementation of concurrency at any scale, 
+since without managing data, what else would happen with the output of a 
+concurrent process. 
+Less obviously, this could be synonymous for the various roles which actors 
+(processes) would have on a concurrent system. 
+Similar to the first point, this is simply a larger scale. 
+For example, this state could be a user management system. 
+Where employees can search the directory, managers take on the role of searching 
+or inserting users, while administrators can take on the roll of the above 
+or deleting users. 
+Each of these actions should be done in a mutual exclusive fashion in order 
+to prevent data inconsistencies. 
+And insertions (depending on the method) and deletion require even more care, 
+since even two at once could overwrite the others' action. 
+
+Inserting searching and deleting are key components to any system, large or small. 
+Handling these requests concurrently is a fundamental part in computing everywhere 
+from local to distributed. 
+
+### Code and Runtime Characteristics
+
+The insert search delete code was mostly inspired by the 
+"Little Book of Semaphores" pseudo code, and was noted as so. 
+
+Here we do a direct comparison between using mutexes as 
+implemented in GoLang's `sync` library, 
+and using buffered channels so emulate mutexes. 
+
+Running both with 1000000 operators, with every second 
+being an inserter, every third (if not even) a searcher, 
+and the remainder being deleters. 
+
+Running, we found channels WAY slower. 
+It took the channel implementation 5.89 minutes! 
+While the mutexes only took 9.33 seconds! 
+
+Taking a look at the performance output we see:
+
+For the channel implementation.
+```
+Duration: 5.89mins, Total samples = 5.80mins (98.43%)
+Entering interactive mode (type "help" for commands, "o" for options)
+(pprof) top
+Showing nodes accounting for 336.86s, 96.83% of 347.89s total
+Dropped 178 nodes (cum <= 1.74s)
+Showing top 10 nodes out of 54
+      flat  flat%   sum%        cum   cum%
+   183.75s 52.82% 52.82%    183.75s 52.82%  runtime.pthread_cond_signal
+    97.88s 28.14% 80.95%    103.63s 29.79%  main.find
+    37.58s 10.80% 91.76%     37.60s 10.81%  container/list.(*List).remove
+     5.79s  1.66% 93.42%      5.79s  1.66%  container/list.(*Element).Next (inline)
+     3.90s  1.12% 94.54%      3.91s  1.12%  runtime.usleep
+     3.33s  0.96% 95.50%      3.33s  0.96%  runtime.pthread_cond_wait
+     2.03s  0.58% 96.08%      2.05s  0.59%  runtime.stackpoolalloc
+     1.41s  0.41% 96.49%      1.97s  0.57%  runtime.scanobject
+     0.63s  0.18% 96.67%      3.92s  1.13%  runtime.newproc1
+     0.56s  0.16% 96.83%      3.33s  0.96%  runtime.gentraceback
+```
+
+And the mutex implementation.  
+```
+Duration: 9.33s, Total samples = 19.97s (214.13%)
+Entering interactive mode (type "help" for commands, "o" for options)
+(pprof) top
+Showing nodes accounting for 10890ms, 54.53% of 19970ms total
+Dropped 112 nodes (cum <= 99.85ms)
+Showing top 10 nodes out of 118
+      flat  flat%   sum%        cum   cum%
+    1690ms  8.46%  8.46%     1690ms  8.46%  runtime.usleep
+    1650ms  8.26% 16.73%     1680ms  8.41%  runtime.stackpoolalloc
+    1440ms  7.21% 23.94%     1660ms  8.31%  runtime.newdefer
+    1060ms  5.31% 29.24%     1290ms  6.46%  main.find
+     950ms  4.76% 34.00%     3870ms 19.38%  runtime.newproc1
+     920ms  4.61% 38.61%     1370ms  6.86%  runtime.gcWriteBarrier
+     900ms  4.51% 43.11%     1350ms  6.76%  runtime.acquireSudog
+     810ms  4.06% 47.17%      810ms  4.06%  runtime.memclrNoHeapPointers
+     750ms  3.76% 50.93%      750ms  3.76%  runtime.pthread_cond_signal
+     720ms  3.61% 54.53%      750ms  3.76%  runtime.getempty
+```
+
+`runtime.pthread_cond_signal` was a huge time hog for the 
+channels. 
+
+Diving in a little deeper into what lines took how long, 
+we can see the find operation being super consuming.  
+
+```
+      10ms   1.72mins     65:   toRemove := find(value)
+```
+
+Where it didn't impact the mutex operation much at all. 
+```
+         .      360ms     65:   toRemove := find(value)
+```
+
+In the find operation, this is the impacting line.  
+```
+  1.58mins   1.58mins     43:           if e.Value == value {
+```  
+```
+     1.05s      1.05s     43:           if e.Value == value {
+```
+
+It's strange how poorly the channel implementation behaved. 
+I hope it's due to an anti-pattern I unknowningly followed, 
+and not a poor characteristic of the language!
+
+The last thing to check for now is the memory usage, 
+perhaps that will give us some clues.
+
+The channel implementation used 54.8MBs, 
+while the mutex implementation used 35.7MB. 
+This isn't shocking, as we've seen above in the 
+producer/consumer problem the memory characteristics 
+followed a similar pattern.
+
+### Analysis
+
+#### Correctness
+
+Since the implementation using mutexes are channels are 
+synonymous (only replacing lines with equivalent ones), 
+we only need to argue for a single version that it's correct.
+
+Each function is nice and small, so let's break it down 
+one by one: 
+
+```golang
+func search(value int) *list.Element {
+	defer wg.Done()
+	searchSwitch.Lock(noSearcher)
+	found := find(value)
+	searchSwitch.Unlock(noSearcher)
+	
+	return found
+}
+```
+
+Before searching, we just `Lock` `searchSwitch`, meaning 
+that if it's the first routine of it's type, 
+it will take a lock on the parameter there (`noSearcher`). 
+As long as it locks `noSearcher`, nothing which needs to 
+bar searchers from operating can run. 
+Then it finds the value. 
+Once found, it calls `Unlock` on `searchSearch`, 
+which would unlock the mutex if it is the last routine there. 
+And lastly, it returns the found value.
+
+
+Next for `insert`, we have:  
+```golang
+func insert(value int) {
+	defer wg.Done()
+	insertSwitch.Lock(noInserter)
+	insertMutex.Lock()
+	l.PushBack(value)
+	insertMutex.Unlock()
+	insertSwitch.Unlock(noInserter)
+}
+```
+
+It checks the 'lightswitch' `insertSwitch` on the way in, 
+locking `noInserter` if need be. 
+And then hold a mutex on the actual list to insert into. 
+After inserting, it unlocks the mutex, and the runs 
+`Unlock` on the `insertSwitch` on it's way out. 
+This pattern protects the list when being appended to, 
+and ensures no other code will run as long as it needs to 
+bar insert routines.
+
+Lastly, `delete` looks like this:
+
+```golang
+func delete(value int) {
+	defer wg.Done()
+	noSearcher.Lock()
+	noInserter.Lock()
+	toRemove := find(value)
+	if toRemove != nil { l.Remove(toRemove) }
+	noInserter.Unlock()
+	noSearcher.Unlock()
+}
+```
+
+Being the most complicated of them all, delete needs to be 
+since it is the most drastic change. 
+It locks out searchers and inserters with 
+`noSearcher.Lock()` and `noInserter.Lock()`. 
+Find the value to remove with the find function, 
+then removes it as long as that value was found. 
+It then `Unlock`s `noSearcher` and `noInserter`.
+
+Given the requirements: 
+- as many searchers can run at once
+- only a single inserter may run at once with searchers concurrently
+- only a single delete routine may run with no concurrent searchers or inserters
+
+This code walk-through suggests that the implementation is correct.
+
+Winner: Both
+
+#### Comprehensibility
+
+While I had thought the channels would end up being more 
+comprehensible since they're the 'golden child' of GoLang. 
+I believe using mutexes are actually much more readable. 
+
+Compare the lightswitch code next to each-other: 
+
+```golang
+func (ls *lightswitch) Lock(m *sync.Mutex) {
+	ls.mutex.Lock()
+	ls.counter += 1
+	if ls.counter == 1 {
+		m.Lock()
+	}
+	ls.mutex.Unlock()
+}
+```
+
+```golang
+func (ls *lightswitch) Lock(c chan bool) {
+	<- ls.mutex
+	ls.counter += 1
+	if ls.counter == 1 {
+		<- c
+	}
+	ls.mutex <- true
+}
+```
+
+It's more immediately clear what is happening with the 
+mutex version since it's a common programming paradigm. 
+Also, we know that mutexes can only be held by a single 
+routine. 
+The details surrounding how a channel has been set up 
+isn't immediately clear, and so the developer working 
+must remember that while tracing code. 
+
+Winner: Mutex
+
+#### Performance
+
+Given the huge difference in the code and runtime 
+characteristics section, the mutex implementation way 
+outperforms the channel implementation. 
+This is could be due to garbage collection of the channels, 
+or the extra memory required
 
 ## (5) Sushi Bar
 
